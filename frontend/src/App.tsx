@@ -8,7 +8,7 @@ import { GraduationCap, Save, Sparkles, Building2, Calendar, BookOpen, Clock, Fi
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api', // <-- Changed this line to use the relative Vercel path
   timeout: 15000,
 });
 const queryClient = new QueryClient();
