@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: './'
+  base: '/', // Changed from './' to '/' to prevent blank screens on route refresh
 })
