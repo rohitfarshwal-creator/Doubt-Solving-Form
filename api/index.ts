@@ -22,15 +22,19 @@ const getAuth = () => {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 
-// --- SERVER-SIDE CACHE FOR LIGHTNING FAST LOADING ---
+// Server-side cache
 let cachedInitData: any = null;
 let lastFetchTime = 0;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // Caches data for 5 minutes
+const CACHE_DURATION_MS = 5 * 60 * 1000;
+
+// Replicate Apps Script TitleCase function
+const toTitleCase = (str: string) => {
+  return str.toLowerCase().replace(/(?:^|\s)\w/g, match => match.toUpperCase());
+};
 
 // --- GET ROUTE (INITIALIZATION) ---
 app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response) => {
   try {
-    // Return cached data instantly if it is fresh
     if (cachedInitData && (Date.now() - lastFetchTime < CACHE_DURATION_MS)) {
         return res.json(cachedInitData);
     }
@@ -38,7 +42,8 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const [teacherRes, dataRes] = await Promise.all([
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:B' }),
-      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:F' }) 
+      // CRITICAL FIX: Fetch all the way to column BG (59 columns)
+      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:BG' }) 
     ]);
 
     const teacherRows = teacherRes.data.values || [];
@@ -48,32 +53,36 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
     const teachersList: any[] = [];
     const studentsList: any[] = [];
 
-    // Parse Teachers (Trim spaces and exclude English Academy)
+    // Parse Teachers EXACTLY like Code.gs
     teacherRows.forEach(row => {
-        const cohort = (row[0] || '').trim();
-        const teacher = (row[1] || '').trim();
+        const cohort = (row[0] || '').toString().trim();
+        let teacher = (row[1] || '').toString().trim();
         
         if (cohort && teacher && cohort !== 'English Academy') {
+            teacher = toTitleCase(teacher);
             cohortsSet.add(cohort);
             teachersList.push({ cohort, name: teacher });
         }
     });
 
-    // Parse Students (Trim spaces and exclude English Academy)
+    // Parse Students EXACTLY like Code.gs
     studentRows.forEach(row => {
-        const name = (row[1] || '').trim();
-        const cohort = (row[2] || '').trim();
-        const branch = (row[3] || '').trim();
-        const batch = (row[4] || '').trim();
-        const grade = (row[5] || '').trim();
+        const cohort = (row[2] || '').toString().trim(); // Col C
+        const branch = (row[3] || '').toString().trim(); // Col D
+        const name = (row[6] || '').toString().trim(); // Col G
+        const status = (row[55] || '').toString().trim().toLowerCase(); // Col BD
+        const grade = (row[57] || '').toString().trim(); // Col BF
+        const batch = (row[58] || '').toString().trim(); // Col BG
+        const bUpper = batch.toUpperCase();
 
-        if (name && batch && cohort !== 'English Academy') {
-            cohortsSet.add(cohort);
-            studentsList.push({ name, cohort, branch, batch, grade });
+        if (cohort && batch && bUpper !== 'NA' && bUpper !== '#N/A' && cohort !== 'English Academy') {
+            if (status !== 'inactive' && status !== 'discontinued' && name) {
+                cohortsSet.add(cohort);
+                studentsList.push({ name, cohort, branch, batch, grade });
+            }
         }
     });
 
-    // Save to Cache
     cachedInitData = {
         cohorts: Array.from(cohortsSet).sort(),
         teachers: teachersList,
@@ -93,25 +102,32 @@ app.post(['/api/session', '/session', '/api/index'], async (req: Request, res: R
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const data = req.body;
     
-    // Formatted exactly like the original Web App logic
+    // Extract metadata from the first student (exactly like Code.gs)
+    const studentMeta = data.selectedStudentsData && data.selectedStudentsData.length > 0 ? data.selectedStudentsData[0] : {};
+    const totalStudents = data.selectedStudentsData ? data.selectedStudentsData.length : 0;
+    const finalBranch = data.branch || studentMeta.branch || '';
+    
+    // Exact 14-column layout from Code.gs
     const newRow = [
-        new Date().toLocaleString('en-GB'),
-        data.date || '', 
-        data.cohort || '', 
-        data.branch || '',
-        data.teacher || '', 
-        data.sessionType || '', 
-        data.batchesList || '',
-        data.subject || '', 
-        data.topic || '', 
-        data.duration || '',
-        data.studentsList || '', 
-        data.notes || ''
+        new Date().toLocaleString('en-GB'), // 1. Timestamp
+        data.cohort || '',                  // 2. Cohort
+        finalBranch,                        // 3. Branch
+        studentMeta.grade || '',            // 4. Grade
+        data.batchesList || '',             // 5. Batches
+        data.teacher || '',                 // 6. Teacher Name
+        data.date || '',                    // 7. Date of Session
+        data.sessionType || '',             // 8. Session Type
+        data.subject || '',                 // 9. Subject
+        data.studentsList || '',            // 10. Selected Students
+        data.topic || '',                   // 11. Topic
+        data.duration || '',                // 12. Class Duration
+        data.notes || '',                   // 13. Additional Notes
+        totalStudents                       // 14. Total Students
     ];
 
     await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'Session Logs!A:L', 
+        range: 'Session Logs!A:N', // Expanded to N to fit 14 columns
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [newRow] },
     });

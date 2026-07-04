@@ -38,7 +38,6 @@ const useSessionStore = create<SessionStore>((set) => ({
   selectedBatches: new Set<string>(),
   selectedStudents: new Map<string, any>(),
 
-  // Added explicit types to satisfy TypeScript strict mode
   setCohort: (cohort: string) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
   setCentre: (centre: string) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
   setSessionType: (sessionType: string) => set({ sessionType, selectedStudents: new Map() }),
@@ -109,7 +108,6 @@ function SessionLogApp() {
 
   const reqCentre = store.cohort === 'Qatar Offline';
 
-  // STRICT CASCADING LOGIC WITH TYPE SAFETY
   const teachers = useMemo(() => {
     if (!initData?.teachers || !store.cohort) return [];
     const filtered = initData.teachers.filter((t: any) => t.cohort === store.cohort);
@@ -161,13 +159,10 @@ function SessionLogApp() {
       finalStudents = Array.from(store.selectedStudents.values());
     }
 
-    const studentMeta = finalStudents.length > 0 ? finalStudents[0] : {};
-    const branchVal = reqCentre ? store.centre : (studentMeta.branch || '');
-
     mutation.mutate({
       ...data,
       cohort: store.cohort,
-      branch: branchVal,
+      branch: reqCentre ? store.centre : '',
       teacher: teacherEl.value,
       sessionType: store.sessionType,
       batchesList: Array.from(store.selectedBatches).join(', '),
@@ -231,7 +226,6 @@ function SessionLogApp() {
             <Card>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
                 
-                {/* UNIFORM GRID DESIGN */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
                   <div className="w-full">
                     <Label required helper="Filters mentor list">Cohort</Label>
