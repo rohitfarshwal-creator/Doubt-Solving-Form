@@ -8,7 +8,7 @@ import { GraduationCap, Save, Sparkles, Building2, Calendar, BookOpen, Clock, Fi
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api', // <-- Changed this line to use the relative Vercel path
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
 });
 const queryClient = new QueryClient();
@@ -38,19 +38,13 @@ const useSessionStore = create<SessionStore>((set) => ({
   selectedBatches: new Set(),
   selectedStudents: new Map(),
 
-  // Rule: Cohort change resets Teacher, Centre, Batches, and Students
   setCohort: (cohort) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
-  
-  // Rule: Centre change resets Batches and Students
   setCentre: (centre) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
-  
-  // Rule: Session Type change resets selected students
   setSessionType: (sessionType) => set({ sessionType, selectedStudents: new Map() }),
 
   toggleBatch: (batch) => set((state) => {
     const b = new Set(state.selectedBatches);
     b.has(batch) ? b.delete(batch) : b.add(batch);
-    // Rule: Deselecting a batch removes students belonging ONLY to that batch
     const s = new Map(state.selectedStudents);
     for (const [name, stu] of s.entries()) {
       if (!b.has(stu.batch)) s.delete(name);
@@ -84,7 +78,6 @@ function SessionLogApp() {
     defaultValues: { date: new Date().toISOString().split('T')[0] }
   });
 
-  // Fetch Initial Data with error handling
   const { data: initData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['init'],
     queryFn: async () => {
@@ -113,18 +106,14 @@ function SessionLogApp() {
     }
   });
 
-  // Business Rule: Qatar Offline requires explicitly selecting a Centre Name
   const reqCentre = store.cohort === 'Qatar Offline';
 
-  // Cascading Logic: Teachers strictly filtered by Cohort
-  const teachers = useMemo(() => initData?.cohortTeachers[store.cohort] || [], [initData, store.cohort]);
-  
-  // Cascading Logic: Branches strictly mapped to Cohort
-  const centres = useMemo(() => initData?.cohortBranches[store.cohort] || [], [initData, store.cohort]);
+  // FIX: Added strong optional chaining and fallbacks to prevent fatal crashes
+  const teachers = useMemo(() => initData?.cohortTeachers?.[store.cohort] || [], [initData, store.cohort]);
+  const centres = useMemo(() => initData?.cohortBranches?.[store.cohort] || [], [initData, store.cohort]);
 
-  // Cascading Logic: Batches filtered by Cohort (or Center if Qatar Offline)
   const batches = useMemo(() => {
-    if (!initData) return [];
+    if (!initData || !initData.students) return []; // FIX: Stop execution if backend data is missing
     if (reqCentre && store.centre) {
       const bSet = new Set<string>();
       initData.students.forEach((s: any) => {
@@ -132,19 +121,17 @@ function SessionLogApp() {
       });
       return Array.from(bSet).sort();
     }
-    return initData.cohortBatches[store.cohort] || [];
+    return initData?.cohortBatches?.[store.cohort] || []; // FIX: Optional chaining
   }, [initData, store.cohort, store.centre, reqCentre]);
   
-  // Cascading Logic: Active Students strictly filtered by Selected Batches (+ Center if Qatar Offline)
   const students = useMemo(() => {
-    if (!initData || store.selectedBatches.size === 0) return [];
+    if (!initData || !initData.students || store.selectedBatches.size === 0) return []; // FIX: Stop execution if backend data is missing
     const bArr = Array.from(store.selectedBatches);
     const filtered = initData.students.filter((s: any) => {
       let match = bArr.includes(s.batch);
       if (reqCentre && store.centre) match = match && (s.branch === store.centre);
       return match;
     });
-    // Deduplication by Student Name
     const unique = new Map();
     filtered.forEach((s: any) => unique.set(s.name, s));
     return Array.from(unique.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
@@ -168,7 +155,6 @@ function SessionLogApp() {
       finalStudents = Array.from(store.selectedStudents.values());
     }
 
-    // Business Rule: Inherit Grade and Branch from the first selected student if not explicitly set
     const studentMeta = finalStudents.length > 0 ? finalStudents[0] : {};
     const branchVal = reqCentre ? store.centre : (studentMeta.branch || '');
 
@@ -190,7 +176,6 @@ function SessionLogApp() {
       
       <div className="flex flex-col md:flex-row min-h-screen bg-slate-100/60 text-slate-800 font-sans">
         
-        {/* Ultra Luxury Sidebar */}
         <aside className="w-full md:w-[300px] p-6 md:p-8 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-10 shrink-0">
           <div>
             <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-slate-800">
@@ -230,7 +215,6 @@ function SessionLogApp() {
           </div>
         </aside>
         
-        {/* Main Workspace */}
         <main className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full overflow-y-auto">
           <header className="mb-8 md:mb-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100/80 border border-blue-200 text-blue-800 text-xs font-bold uppercase tracking-wider mb-3">
@@ -246,7 +230,6 @@ function SessionLogApp() {
             <Card>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
                 
-                {/* Row 1: Cohort & Teacher */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
                   <div>
                     <Label required helper="Filters mentor list">Cohort</Label>
@@ -257,7 +240,8 @@ function SessionLogApp() {
                       required
                     >
                       <option value="" disabled>Select a Cohort...</option>
-                      {initData?.cohorts.map((c: string) => <option key={c} value={c}>{c}</option>)}
+                      {/* FIX: Added safe optional chaining for the .map function */}
+                      {initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}
                     </Select>
                   </div>
                   <div>
@@ -269,7 +253,6 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                {/* Exception Row: Qatar Offline Centre */}
                 {reqCentre && (
                   <div className="p-5 rounded-2xl bg-blue-50/50 border border-blue-100 animate-fade-in">
                     <Label required helper="Strictly required for Qatar Offline">Centre Name (Branch)</Label>
@@ -285,7 +268,6 @@ function SessionLogApp() {
                   </div>
                 )}
                 
-                {/* Row 2: Date & Session Type */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label required helper="Session date">Date of Session</Label>
@@ -307,7 +289,6 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                {/* Row 3: Batches & Subject */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label required helper="Multi-select support">Batches</Label>
@@ -326,7 +307,7 @@ function SessionLogApp() {
                   <div>
                     <Label required helper="Curriculum subject">Subject</Label>
                     <Select {...register('subject')} disabled={mutation.isPending} required>
-                      <option value="" disabled selected>Select Subject...</option>
+                      <option value="" disabled>Select Subject...</option>
                       <option value="Physics">Physics</option>
                       <option value="Chemistry">Chemistry</option>
                       <option value="Maths">Maths</option>
@@ -337,12 +318,11 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                {/* Dynamic Student Selection Section */}
                 {store.sessionType === '1:1' && (
                   <div className="p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
                     <Label required helper="Filtered by selected batches">Select Student (1:1 Mode)</Label>
                     <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} required>
-                      <option value="" disabled selected>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
+                      <option value="" disabled>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
                       {students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} (Grade: {s.grade || 'N/A'} | Batch: {s.batch})</option>)}
                     </Select>
                   </div>
@@ -370,7 +350,6 @@ function SessionLogApp() {
                   </div>
                 )}
 
-                {/* Row 4: Topic & Duration */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label required helper="Specific doubt covered">Topic Discussed</Label>
@@ -379,7 +358,7 @@ function SessionLogApp() {
                   <div>
                     <Label required helper="Class length in minutes">Class Duration</Label>
                     <Select {...register('duration')} disabled={mutation.isPending} required>
-                      <option value="" disabled selected>Select Duration...</option>
+                      <option value="" disabled>Select Duration...</option>
                       {[15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180].map(m => (
                         <option key={m} value={m}>{m} minutes ({m/60} hrs)</option>
                       ))}
@@ -387,7 +366,6 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                {/* Additional Notes */}
                 <div>
                   <Label helper="Optional faculty observations">Additional Notes</Label>
                   <textarea
@@ -399,7 +377,6 @@ function SessionLogApp() {
                   />
                 </div>
 
-                {/* Submit Action Button */}
                 <div className="pt-4 border-t border-slate-200/60 flex justify-end">
                   <Button type="submit" isLoading={mutation.isPending} className="md:w-auto md:min-w-[240px] shadow-xl shadow-blue-600/20">
                     <Save className="w-4 h-4 stroke-[2.5]" /> Save Session Record
