@@ -22,93 +22,101 @@ const getAuth = () => {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 
-// --- GET ROUTE: RESTORED PARSING LOGIC ---
+// --- SERVER-SIDE CACHE FOR LIGHTNING FAST LOADING ---
+let cachedInitData: any = null;
+let lastFetchTime = 0;
+const CACHE_DURATION_MS = 5 * 60 * 1000; // Caches data for 5 minutes
+
+// --- GET ROUTE (INITIALIZATION) ---
 app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response) => {
   try {
+    // Return cached data instantly if it is fresh
+    if (cachedInitData && (Date.now() - lastFetchTime < CACHE_DURATION_MS)) {
+        return res.json(cachedInitData);
+    }
+
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const [teacherRes, dataRes] = await Promise.all([
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:B' }),
-      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:BG' })
+      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:F' }) 
     ]);
 
     const teacherRows = teacherRes.data.values || [];
     const studentRows = dataRes.data.values || [];
 
     const cohortsSet = new Set<string>();
-    const cohortTeachers: Record<string, string[]> = {};
-    const cohortBranches: Record<string, string[]> = {};
-    const cohortBatches: Record<string, string[]> = {};
-    const students: any[] = [];
+    const teachersList: any[] = [];
+    const studentsList: any[] = [];
 
+    // Parse Teachers (Trim spaces and exclude English Academy)
     teacherRows.forEach(row => {
-        const cohort = row[0] || 'Unknown Cohort';
-        const teacher = row[1];
-        cohortsSet.add(cohort);
-        if (!cohortTeachers[cohort]) cohortTeachers[cohort] = [];
-        if (teacher && !cohortTeachers[cohort].includes(teacher)) {
-            cohortTeachers[cohort].push(teacher);
-        }
-    });
-
-    studentRows.forEach(row => {
-        const name = row[1];
-        const cohort = row[2] || 'Unknown Cohort';
-        const branch = row[3];
-        const batch = row[4];
-        const grade = row[5];
-
-        if (name && batch) {
+        const cohort = (row[0] || '').trim();
+        const teacher = (row[1] || '').trim();
+        
+        if (cohort && teacher && cohort !== 'English Academy') {
             cohortsSet.add(cohort);
-            if (branch) {
-                if (!cohortBranches[cohort]) cohortBranches[cohort] = [];
-                if (!cohortBranches[cohort].includes(branch)) cohortBranches[cohort].push(branch);
-            }
-            if (batch) {
-                if (!cohortBatches[cohort]) cohortBatches[cohort] = [];
-                if (!cohortBatches[cohort].includes(batch)) cohortBatches[cohort].push(batch);
-            }
-            students.push({ name, cohort, branch, batch, grade });
+            teachersList.push({ cohort, name: teacher });
         }
     });
 
-    res.json({
-        cohorts: Array.from(cohortsSet).sort(),
-        cohortTeachers,
-        cohortBranches,
-        cohortBatches,
-        students
+    // Parse Students (Trim spaces and exclude English Academy)
+    studentRows.forEach(row => {
+        const name = (row[1] || '').trim();
+        const cohort = (row[2] || '').trim();
+        const branch = (row[3] || '').trim();
+        const batch = (row[4] || '').trim();
+        const grade = (row[5] || '').trim();
+
+        if (name && batch && cohort !== 'English Academy') {
+            cohortsSet.add(cohort);
+            studentsList.push({ name, cohort, branch, batch, grade });
+        }
     });
 
+    // Save to Cache
+    cachedInitData = {
+        cohorts: Array.from(cohortsSet).sort(),
+        teachers: teachersList,
+        students: studentsList
+    };
+    lastFetchTime = Date.now();
+
+    res.json(cachedInitData);
   } catch (e: any) { 
-    console.error("Init Error:", e);
-    // This will send the exact Google error to your frontend screen
     res.status(500).json({ message: "Google API Error: " + e.message }); 
   }
 });
 
-// --- POST ROUTE: SAVE SESSION ---
+// --- POST ROUTE (SAVE SESSION) ---
 app.post(['/api/session', '/session', '/api/index'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const data = req.body;
     
+    // Formatted exactly like the original Web App logic
+    const newRow = [
+        new Date().toLocaleString('en-GB'),
+        data.date || '', 
+        data.cohort || '', 
+        data.branch || '',
+        data.teacher || '', 
+        data.sessionType || '', 
+        data.batchesList || '',
+        data.subject || '', 
+        data.topic || '', 
+        data.duration || '',
+        data.studentsList || '', 
+        data.notes || ''
+    ];
+
     await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
         range: 'Session Logs!A:L', 
         valueInputOption: 'USER_ENTERED',
-        requestBody: {
-            values: [[
-                new Date().toLocaleString('en-GB'),
-                data.date || '', data.cohort || '', data.branch || '',
-                data.teacher || '', data.sessionType || '', data.batchesList || '',
-                data.subject || '', data.topic || '', data.duration || '',
-                data.studentsList || '', data.notes || ''
-            ]],
-        },
+        requestBody: { values: [newRow] },
     });
     res.json({ success: true, message: "Session logged" });
   } catch (e: any) { 
-    console.error("Session Error:", e);
     res.status(500).json({ message: "Google API Error: " + e.message }); 
   }
 });

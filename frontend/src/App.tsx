@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { useQuery, useMutation, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
-import { GraduationCap, Save, Sparkles, Building2, Calendar, BookOpen, Clock, FileText, CheckCircle2 } from 'lucide-react';
+import { GraduationCap, Save, Sparkles, Building2, Calendar, CheckCircle2 } from 'lucide-react';
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
 const apiClient = axios.create({
@@ -108,34 +108,39 @@ function SessionLogApp() {
 
   const reqCentre = store.cohort === 'Qatar Offline';
 
-  // FIX: Added strong optional chaining and fallbacks to prevent fatal crashes
-  const teachers = useMemo(() => initData?.cohortTeachers?.[store.cohort] || [], [initData, store.cohort]);
-  const centres = useMemo(() => initData?.cohortBranches?.[store.cohort] || [], [initData, store.cohort]);
+  // STRICT CASCADING LOGIC
+  const teachers = useMemo(() => {
+    if (!initData?.teachers || !store.cohort) return [];
+    const filtered = initData.teachers.filter((t: any) => t.cohort === store.cohort);
+    return Array.from(new Set(filtered.map((t: any) => t.name))).sort();
+  }, [initData, store.cohort]);
+
+  const centres = useMemo(() => {
+    if (!initData?.students || !store.cohort) return [];
+    const filtered = initData.students.filter((s: any) => s.cohort === store.cohort && s.branch);
+    return Array.from(new Set(filtered.map((s: any) => s.branch))).sort();
+  }, [initData, store.cohort]);
 
   const batches = useMemo(() => {
-    if (!initData || !initData.students) return []; // FIX: Stop execution if backend data is missing
+    if (!initData?.students || !store.cohort) return [];
+    let filtered = initData.students.filter((s: any) => s.cohort === store.cohort);
     if (reqCentre && store.centre) {
-      const bSet = new Set<string>();
-      initData.students.forEach((s: any) => {
-        if (s.branch === store.centre) bSet.add(s.batch);
-      });
-      return Array.from(bSet).sort();
+      filtered = filtered.filter((s: any) => s.branch === store.centre);
     }
-    return initData?.cohortBatches?.[store.cohort] || []; // FIX: Optional chaining
+    return Array.from(new Set(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
   }, [initData, store.cohort, store.centre, reqCentre]);
   
   const students = useMemo(() => {
-    if (!initData || !initData.students || store.selectedBatches.size === 0) return []; // FIX: Stop execution if backend data is missing
+    if (!initData?.students || store.selectedBatches.size === 0) return [];
     const bArr = Array.from(store.selectedBatches);
-    const filtered = initData.students.filter((s: any) => {
-      let match = bArr.includes(s.batch);
-      if (reqCentre && store.centre) match = match && (s.branch === store.centre);
-      return match;
-    });
+    let filtered = initData.students.filter((s: any) => s.cohort === store.cohort && bArr.includes(s.batch));
+    if (reqCentre && store.centre) {
+      filtered = filtered.filter((s: any) => s.branch === store.centre);
+    }
     const unique = new Map();
     filtered.forEach((s: any) => unique.set(s.name, s));
     return Array.from(unique.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  }, [initData, store.selectedBatches, store.centre, reqCentre]);
+  }, [initData, store.cohort, store.selectedBatches, store.centre, reqCentre]);
 
   const onSubmit = (data: any) => {
     if (!store.cohort) return toast.error('Please select a Cohort.');
@@ -208,11 +213,6 @@ function SessionLogApp() {
               </div>
             </div>
           </div>
-
-          <div className="mt-12 pt-6 border-t border-slate-800/80 text-center md:text-left">
-            <p className="text-[11px] font-medium text-slate-500">Enterprise Edition v2.4</p>
-            <p className="text-[10px] text-slate-600 font-semibold mt-0.5">Strict Apps Script Parity</p>
-          </div>
         </aside>
         
         <main className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full overflow-y-auto">
@@ -225,13 +225,14 @@ function SessionLogApp() {
           </header>
 
           {isError ? (
-            <ErrorBanner message={`Cannot reach backend server (${error?.message || 'Network Error'}). Ensure 'npx ts-node-dev src/server.ts' is running in your backend terminal.`} onRetry={() => refetch()} />
+            <ErrorBanner message={`Cannot reach backend server (${error?.message || 'Network Error'}). Ensure backend is running.`} onRetry={() => refetch()} />
           ) : (
             <Card>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
-                  <div>
+                {/* UNIFORM GRID DESIGN */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
+                  <div className="w-full">
                     <Label required helper="Filters mentor list">Cohort</Label>
                     <Select
                       value={store.cohort}
@@ -240,11 +241,10 @@ function SessionLogApp() {
                       required
                     >
                       <option value="" disabled>Select a Cohort...</option>
-                      {/* FIX: Added safe optional chaining for the .map function */}
                       {initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}
                     </Select>
                   </div>
-                  <div>
+                  <div className="w-full">
                     <Label required helper="Auto-mapped to cohort">Teacher / Mentor</Label>
                     <Select id="teacher" disabled={!store.cohort || isLoading || mutation.isPending} required>
                       <option value="" disabled>Waiting for Cohort...</option>
@@ -254,26 +254,28 @@ function SessionLogApp() {
                 </div>
 
                 {reqCentre && (
-                  <div className="p-5 rounded-2xl bg-blue-50/50 border border-blue-100 animate-fade-in">
-                    <Label required helper="Strictly required for Qatar Offline">Centre Name (Branch)</Label>
-                    <Select
-                      value={store.centre}
-                      onChange={(e: any) => store.setCentre(e.target.value)}
-                      disabled={mutation.isPending}
-                      required
-                    >
-                      <option value="" disabled>Select Centre...</option>
-                      {centres.map((c: string) => <option key={c} value={c}>{c}</option>)}
-                    </Select>
+                  <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-blue-50/50 border border-blue-100 animate-fade-in">
+                    <div className="w-full">
+                      <Label required helper="Strictly required for Qatar Offline">Centre Name (Branch)</Label>
+                      <Select
+                        value={store.centre}
+                        onChange={(e: any) => store.setCentre(e.target.value)}
+                        disabled={mutation.isPending}
+                        required
+                      >
+                        <option value="" disabled>Select Centre...</option>
+                        {centres.map((c: string) => <option key={c} value={c}>{c}</option>)}
+                      </Select>
+                    </div>
                   </div>
                 )}
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="w-full">
                     <Label required helper="Session date">Date of Session</Label>
                     <Input type="date" {...register('date')} disabled={mutation.isPending} required />
                   </div>
-                  <div>
+                  <div className="w-full">
                     <Label required helper="Determines student selection mode">Session Type</Label>
                     <Select
                       value={store.sessionType}
@@ -289,8 +291,8 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="w-full">
                     <Label required helper="Multi-select support">Batches</Label>
                     <MultiSelect
                       items={batches}
@@ -304,7 +306,7 @@ function SessionLogApp() {
                       disabled={batches.length === 0 || mutation.isPending}
                     />
                   </div>
-                  <div>
+                  <div className="w-full">
                     <Label required helper="Curriculum subject">Subject</Label>
                     <Select {...register('subject')} disabled={mutation.isPending} required>
                       <option value="" disabled>Select Subject...</option>
@@ -319,43 +321,47 @@ function SessionLogApp() {
                 </div>
 
                 {store.sessionType === '1:1' && (
-                  <div className="p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
-                    <Label required helper="Filtered by selected batches">Select Student (1:1 Mode)</Label>
-                    <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} required>
-                      <option value="" disabled>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
-                      {students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} (Grade: {s.grade || 'N/A'} | Batch: {s.batch})</option>)}
-                    </Select>
+                  <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
+                    <div className="w-full">
+                      <Label required helper="Filtered by selected batches">Select Student (1:1 Mode)</Label>
+                      <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} required>
+                        <option value="" disabled>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
+                        {students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} (Grade: {s.grade || 'N/A'} | Batch: {s.batch})</option>)}
+                      </Select>
+                    </div>
                   </div>
                 )}
 
                 {(store.sessionType === 'SGC' || store.sessionType === 'LGC') && (
-                  <div className="p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
-                    <Label required helper="Search by name, grade or batch">Select Students (Group Mode)</Label>
-                    <MultiSelect
-                      items={students}
-                      selectedItems={store.selectedStudents}
-                      itemKey={(s: any) => s.name}
-                      renderItem={(s: any) => (
-                        <div className="flex flex-col py-0.5">
-                          <span className="font-bold text-slate-800">{s.name}</span>
-                          <span className="text-[11px] font-semibold text-slate-400">Batch: <strong className="text-blue-600">{s.batch}</strong> | Grade: {s.grade || 'N/A'}</span>
-                        </div>
-                      )}
-                      onToggle={store.toggleStudent}
-                      onSelectAll={() => store.selectAllStudents(students)}
-                      onClearAll={store.clearAllStudents}
-                      placeholder={store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Search & select students..."}
-                      disabled={students.length === 0 || mutation.isPending}
-                    />
+                  <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
+                    <div className="w-full">
+                      <Label required helper="Search by name, grade or batch">Select Students (Group Mode)</Label>
+                      <MultiSelect
+                        items={students}
+                        selectedItems={store.selectedStudents}
+                        itemKey={(s: any) => s.name}
+                        renderItem={(s: any) => (
+                          <div className="flex flex-col py-0.5">
+                            <span className="font-bold text-slate-800">{s.name}</span>
+                            <span className="text-[11px] font-semibold text-slate-400">Batch: <strong className="text-blue-600">{s.batch}</strong> | Grade: {s.grade || 'N/A'}</span>
+                          </div>
+                        )}
+                        onToggle={store.toggleStudent}
+                        onSelectAll={() => store.selectAllStudents(students)}
+                        onClearAll={store.clearAllStudents}
+                        placeholder={store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Search & select students..."}
+                        disabled={students.length === 0 || mutation.isPending}
+                      />
+                    </div>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="w-full">
                     <Label required helper="Specific doubt covered">Topic Discussed</Label>
                     <Input {...register('topic')} placeholder="E.g., Kinematics Rotational Dynamics Doubt Solving" disabled={mutation.isPending} required />
                   </div>
-                  <div>
+                  <div className="w-full">
                     <Label required helper="Class length in minutes">Class Duration</Label>
                     <Select {...register('duration')} disabled={mutation.isPending} required>
                       <option value="" disabled>Select Duration...</option>
@@ -366,14 +372,14 @@ function SessionLogApp() {
                   </div>
                 </div>
 
-                <div>
+                <div className="w-full">
                   <Label helper="Optional faculty observations">Additional Notes</Label>
                   <textarea
                     {...register('notes')}
                     className="w-full p-4 bg-white/90 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium transition-all duration-200 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 disabled:bg-slate-100"
                     rows={3}
                     placeholder="Any specific student observations, homework assigned, or follow-up needed?"
-                    disabled={mutation.isPending}
+                    disabled={mutation.is.Pending}
                   />
                 </div>
 
