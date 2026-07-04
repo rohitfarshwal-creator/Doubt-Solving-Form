@@ -23,59 +23,40 @@ const getAuth = () => {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 
-// --- GET ROUTE (Initialization Data) ---
-app.get('/api/init', async (req: Request, res: Response) => {
+app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
-    const [teacherRes, dataRes] = await Promise.all([
+    await Promise.all([
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:B' }),
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:BG' })
     ]);
-    
-    // NOTE: If you had custom logic here previously to format 'teacherRes' and 'dataRes' 
-    // into the dropdown menus for your frontend, make sure to paste it back in!
-    
-    res.json({ success: true, message: "Backend is connected to Google Sheets!" });
+    res.json({ success: true, message: "Backend connected" });
   } catch (e: any) { 
     res.status(500).json({ error: e.message }); 
   }
 });
 
-// --- POST ROUTE (Save Session Data) ---
-app.post('/api/session', async (req: Request, res: Response) => {
+app.post(['/api/session', '/session', '/api/index'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const data = req.body;
     
-    // Map the payload from your frontend form into a single Google Sheets row
-    const newRow = [
-        new Date().toLocaleString('en-GB'), // Column A: Timestamp
-        data.date || '',                    // Column B: Date
-        data.cohort || '',                  // Column C: Cohort
-        data.branch || '',                  // Column D: Centre Name
-        data.teacher || '',                 // Column E: Teacher
-        data.sessionType || '',             // Column F: Session Type
-        data.batchesList || '',             // Column G: Batches
-        data.subject || '',                 // Column H: Subject
-        data.topic || '',                   // Column I: Topic
-        data.duration || '',                // Column J: Duration
-        data.studentsList || '',            // Column K: Students
-        data.notes || ''                    // Column L: Notes
-    ];
-
     await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        // IMPORTANT: Change 'Session Logs' to match the exact tab name in your Google Sheet!
         range: 'Session Logs!A:L', 
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-            values: [newRow],
+            values: [[
+                new Date().toLocaleString('en-GB'),
+                data.date || '', data.cohort || '', data.branch || '',
+                data.teacher || '', data.sessionType || '', data.batchesList || '',
+                data.subject || '', data.topic || '', data.duration || '',
+                data.studentsList || '', data.notes || ''
+            ]],
         },
     });
-
-    res.json({ success: true, message: "Session logged successfully!" });
+    res.json({ success: true, message: "Session logged" });
   } catch (e: any) { 
-    console.error("API Error:", e);
     res.status(500).json({ error: e.message }); 
   }
 });
