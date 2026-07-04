@@ -35,14 +35,15 @@ const useSessionStore = create<SessionStore>((set) => ({
   cohort: '',
   centre: '',
   sessionType: '',
-  selectedBatches: new Set(),
-  selectedStudents: new Map(),
+  selectedBatches: new Set<string>(),
+  selectedStudents: new Map<string, any>(),
 
-  setCohort: (cohort) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
-  setCentre: (centre) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
-  setSessionType: (sessionType) => set({ sessionType, selectedStudents: new Map() }),
+  // Added explicit types to satisfy TypeScript strict mode
+  setCohort: (cohort: string) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
+  setCentre: (centre: string) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
+  setSessionType: (sessionType: string) => set({ sessionType, selectedStudents: new Map() }),
 
-  toggleBatch: (batch) => set((state) => {
+  toggleBatch: (batch: string) => set((state) => {
     const b = new Set(state.selectedBatches);
     b.has(batch) ? b.delete(batch) : b.add(batch);
     const s = new Map(state.selectedStudents);
@@ -52,17 +53,17 @@ const useSessionStore = create<SessionStore>((set) => ({
     return { selectedBatches: b, selectedStudents: s };
   }),
 
-  selectAllBatches: (batches) => set({ selectedBatches: new Set(batches) }),
+  selectAllBatches: (batches: string[]) => set({ selectedBatches: new Set(batches) }),
   clearAllBatches: () => set({ selectedBatches: new Set(), selectedStudents: new Map() }),
 
-  toggleStudent: (student) => set((state) => {
+  toggleStudent: (student: any) => set((state) => {
     const s = new Map(state.selectedStudents);
     s.has(student.name) ? s.delete(student.name) : s.set(student.name, student);
     return { selectedStudents: s };
   }),
 
-  selectAllStudents: (students) => {
-    const s = new Map();
+  selectAllStudents: (students: any[]) => {
+    const s = new Map<string, any>();
     students.forEach(stu => s.set(stu.name, stu));
     set({ selectedStudents: s });
   },
@@ -108,17 +109,17 @@ function SessionLogApp() {
 
   const reqCentre = store.cohort === 'Qatar Offline';
 
-  // STRICT CASCADING LOGIC
+  // STRICT CASCADING LOGIC WITH TYPE SAFETY
   const teachers = useMemo(() => {
     if (!initData?.teachers || !store.cohort) return [];
     const filtered = initData.teachers.filter((t: any) => t.cohort === store.cohort);
-    return Array.from(new Set(filtered.map((t: any) => t.name))).sort();
+    return Array.from(new Set<string>(filtered.map((t: any) => t.name))).sort();
   }, [initData, store.cohort]);
 
   const centres = useMemo(() => {
     if (!initData?.students || !store.cohort) return [];
     const filtered = initData.students.filter((s: any) => s.cohort === store.cohort && s.branch);
-    return Array.from(new Set(filtered.map((s: any) => s.branch))).sort();
+    return Array.from(new Set<string>(filtered.map((s: any) => s.branch))).sort();
   }, [initData, store.cohort]);
 
   const batches = useMemo(() => {
@@ -127,7 +128,7 @@ function SessionLogApp() {
     if (reqCentre && store.centre) {
       filtered = filtered.filter((s: any) => s.branch === store.centre);
     }
-    return Array.from(new Set(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
+    return Array.from(new Set<string>(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
   }, [initData, store.cohort, store.centre, reqCentre]);
   
   const students = useMemo(() => {
@@ -137,7 +138,7 @@ function SessionLogApp() {
     if (reqCentre && store.centre) {
       filtered = filtered.filter((s: any) => s.branch === store.centre);
     }
-    const unique = new Map();
+    const unique = new Map<string, any>();
     filtered.forEach((s: any) => unique.set(s.name, s));
     return Array.from(unique.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
   }, [initData, store.cohort, store.selectedBatches, store.centre, reqCentre]);
@@ -246,7 +247,7 @@ function SessionLogApp() {
                   </div>
                   <div className="w-full">
                     <Label required helper="Auto-mapped to cohort">Teacher / Mentor</Label>
-                    <Select id="teacher" disabled={!store.cohort || isLoading || mutation.isPending} required>
+                    <Select id="teacher" disabled={!store.cohort || isLoading || mutation.isPending} defaultValue="" required>
                       <option value="" disabled>Waiting for Cohort...</option>
                       {teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}
                     </Select>
@@ -308,7 +309,7 @@ function SessionLogApp() {
                   </div>
                   <div className="w-full">
                     <Label required helper="Curriculum subject">Subject</Label>
-                    <Select {...register('subject')} disabled={mutation.isPending} required>
+                    <Select {...register('subject')} disabled={mutation.isPending} defaultValue="" required>
                       <option value="" disabled>Select Subject...</option>
                       <option value="Physics">Physics</option>
                       <option value="Chemistry">Chemistry</option>
@@ -324,7 +325,7 @@ function SessionLogApp() {
                   <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
                     <div className="w-full">
                       <Label required helper="Filtered by selected batches">Select Student (1:1 Mode)</Label>
-                      <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} required>
+                      <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} defaultValue="" required>
                         <option value="" disabled>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
                         {students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} (Grade: {s.grade || 'N/A'} | Batch: {s.batch})</option>)}
                       </Select>
@@ -363,7 +364,7 @@ function SessionLogApp() {
                   </div>
                   <div className="w-full">
                     <Label required helper="Class length in minutes">Class Duration</Label>
-                    <Select {...register('duration')} disabled={mutation.isPending} required>
+                    <Select {...register('duration')} disabled={mutation.isPending} defaultValue="" required>
                       <option value="" disabled>Select Duration...</option>
                       {[15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180].map(m => (
                         <option key={m} value={m}>{m} minutes ({m/60} hrs)</option>
@@ -379,7 +380,7 @@ function SessionLogApp() {
                     className="w-full p-4 bg-white/90 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium transition-all duration-200 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 disabled:bg-slate-100"
                     rows={3}
                     placeholder="Any specific student observations, homework assigned, or follow-up needed?"
-                    disabled={mutation.is.Pending}
+                    disabled={mutation.isPending} 
                   />
                 </div>
 
