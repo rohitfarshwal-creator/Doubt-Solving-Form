@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { create } from 'zustand';
 import { useQuery, useMutation, QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
 import { 
   GraduationCap, Save, Sparkles, Building2, Calendar, CheckCircle2, 
-  ArrowLeft, FileText, Users, Plus, Trash2, ExternalLink 
+  ArrowLeft, FileText, Users, Plus, Trash2, Paperclip 
 } from 'lucide-react';
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
@@ -131,7 +131,7 @@ function HomeDashboard() {
             <FileText className="w-7 h-7 text-indigo-600" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">DPP Form</h2>
-          <p className="text-slate-500 font-medium">Submit daily practice problems, homework topics, and batch attachments.</p>
+          <p className="text-slate-500 font-medium">Submit daily practice problems, homework topics, and direct file attachments.</p>
         </button>
       </div>
     </div>
@@ -387,16 +387,15 @@ function ExtraClassForm({ initData, isLoading, mutation }: any) {
 
 
 // ==========================================
-// 2. DPP FORM (Multi-Entry logic)
+// 2. DPP FORM WITH NATIVE FILE UPLOADER
 // ==========================================
 function DPPForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
   const setView = useSessionStore(state => state.setCurrentView);
   
-  // Setup React-Hook-Form with dynamic array for multiple days/entries
-  const { register, control, handleSubmit, reset } = useForm<any>({
+  const { register, control, handleSubmit, reset, setValue, watch } = useForm<any>({
     defaultValues: { 
-      entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: '' }] 
+      entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null }] 
     }
   });
   
@@ -426,6 +425,31 @@ function DPPForm({ initData, isLoading, mutation }: any) {
     return Array.from(new Set<string>(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
   }, [initData, store.cohort, store.centre, reqCentre]);
 
+  // Handler for file upload input
+  const handleFileChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setValue(`entries.${index}.attachmentData`, null);
+      return;
+    }
+    // Limit to 3.5MB to ensure Vercel serverless functions do not time out
+    if (file.size > 3.5 * 1024 * 1024) {
+      toast.error("File is too large! Please select a file smaller than 3.5 MB due to cloud limits.");
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setValue(`entries.${index}.attachmentData`, {
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileData: reader.result as string
+      });
+      toast.success(`Attached: ${file.name}`, { icon: '📎' });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const onSubmit = (data: any) => {
     if (!store.cohort) return toast.error('Please select a Cohort.');
     const teacherEl = document.getElementById('teacherDpp') as HTMLSelectElement;
@@ -442,12 +466,12 @@ function DPPForm({ initData, isLoading, mutation }: any) {
           teacher: teacherEl.value,
           batchesList: Array.from(store.selectedBatches).join(', '),
           subject: data.subject,
-          entries: data.entries // The dynamic array of days
+          entries: data.entries 
         }
       },
       {
         onSuccess: () => {
-          reset({ entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: '' }] });
+          reset({ entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null }] });
           store.resetFormState();
           if (teacherEl) teacherEl.value = '';
         }
@@ -465,11 +489,11 @@ function DPPForm({ initData, isLoading, mutation }: any) {
           <FileText className="w-3.5 h-3.5" /> DPP Module
         </div>
         <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight">DPP Form</h1>
-        <p className="text-slate-500 text-sm font-medium mt-1.5">Submit homework and practice problems. Add multiple entries to submit a whole week at once!</p>
+        <p className="text-slate-500 text-sm font-medium mt-1.5">Submit homework and practice problems. Attach your files directly into the form!</p>
       </header>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        {/* FIXED TOP SECTION */}
+        {/* MASTER INFORMATION */}
         <Card className="border-indigo-100 shadow-indigo-900/5">
           <div className="border-b border-slate-100 pb-4 mb-6">
             <h3 className="font-bold text-slate-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-indigo-500"/> Master Information</h3>
@@ -534,7 +558,7 @@ function DPPForm({ initData, isLoading, mutation }: any) {
           </div>
         </Card>
 
-        {/* DYNAMIC ENTRIES SECTION */}
+        {/* DYNAMIC ENTRIES WITH FILE UPLOADER */}
         <div className="space-y-6">
           <div className="flex items-center justify-between px-2">
             <h3 className="font-black text-slate-800 text-lg">Daily Entries</h3>
@@ -544,7 +568,6 @@ function DPPForm({ initData, isLoading, mutation }: any) {
           {fields.map((item, index) => (
             <Card key={item.id} className="relative border-l-4 border-l-indigo-500 animate-fade-in shadow-md">
               
-              {/* Delete button (only show if more than 1 entry) */}
               {fields.length > 1 && (
                 <button type="button" onClick={() => remove(index)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                   <Trash2 className="w-4 h-4" />
@@ -579,16 +602,23 @@ function DPPForm({ initData, isLoading, mutation }: any) {
                 </div>
               </div>
 
+              {/* NATIVE FILE UPLOADER BUTTON */}
               <div className="grid grid-cols-1 gap-6">
                 <div className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label helper="Paste the link to the file">Attachment Link</Label>
-                    <a href="https://drive.google.com/drive/folders/1W5DOjAp3tI2aMBzKpSZ_n5C5g9xs9NE4?usp=drive_link" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-100/50 hover:bg-blue-100 px-3 py-1.5 rounded-full transition-colors">
-                      <ExternalLink className="w-3.5 h-3.5" /> Upload to Drive First
-                    </a>
+                  <Label helper="Upload PDF, Image, or Doc (Max 3.5 MB)">Upload Attachment</Label>
+                  <div className="mt-1 flex items-center gap-3">
+                    <input 
+                      type="file" 
+                      onChange={(e) => handleFileChange(index, e)} 
+                      disabled={mutation.isPending}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 transition-all cursor-pointer shadow-sm"
+                    />
                   </div>
-                  <Input {...register(`entries.${index}.attachment`)} placeholder="https://drive.google.com/file/d/..." disabled={mutation.isPending} />
-                  <p className="text-[11px] text-slate-500 mt-2 font-medium">To avoid server limits, please upload your file to the official Drive folder using the button above, then paste the generated link here.</p>
+                  {watch(`entries.${index}.attachmentData`) && (
+                    <p className="text-xs text-emerald-600 font-bold mt-2 flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5" /> Attached: {watch(`entries.${index}.attachmentData.fileName`)}
+                    </p>
+                  )}
                 </div>
               </div>
             </Card>
@@ -599,7 +629,7 @@ function DPPForm({ initData, isLoading, mutation }: any) {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-200/60">
           <button 
             type="button" 
-            onClick={() => append({ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: '' })}
+            onClick={() => append({ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null })}
             disabled={mutation.isPending}
             className="flex items-center justify-center gap-2 px-6 py-3.5 bg-white border-2 border-dashed border-indigo-300 text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 hover:border-indigo-500 w-full md:w-auto transition-all"
           >
@@ -651,10 +681,9 @@ function MainApplication() {
 
   return (
     <>
-      <GlobalLoader active={isLoading || mutation.isPending} message={mutation.isPending ? "Connecting to Google Sheets..." : "Loading PW Gulf environment..."} />
+      <GlobalLoader active={isLoading || mutation.isPending} message={mutation.isPending ? "Uploading file & logging to Google Sheets..." : "Loading PW Gulf environment..."} />
       
       <div className="flex flex-col md:flex-row min-h-screen bg-slate-100/60 text-slate-800 font-sans">
-        {/* SIDEBAR (Visible on all views) */}
         <aside className="w-full md:w-[300px] p-6 md:p-8 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-10 shrink-0">
           <div>
             <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-slate-800">
@@ -689,7 +718,6 @@ function MainApplication() {
           </div>
         </aside>
         
-        {/* MAIN CONTENT AREA */}
         <main className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full overflow-y-auto">
           {isError ? (
             <ErrorBanner message={`Cannot reach backend server (${error?.message || 'Network Error'}). Ensure backend is running.`} onRetry={() => refetch()} />
