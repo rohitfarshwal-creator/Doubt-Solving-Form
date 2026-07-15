@@ -27,7 +27,6 @@ let cachedInitData: any = null;
 let lastFetchTime = 0;
 const CACHE_DURATION_MS = 5 * 60 * 1000;
 
-// Replicate Apps Script TitleCase function
 const toTitleCase = (str: string) => {
   return str.toLowerCase().replace(/(?:^|\s)\w/g, match => match.toUpperCase());
 };
@@ -42,7 +41,6 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const [teacherRes, dataRes] = await Promise.all([
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:B' }),
-      // CRITICAL FIX: Fetch all the way to column BG (59 columns)
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:BG' }) 
     ]);
 
@@ -53,11 +51,9 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
     const teachersList: any[] = [];
     const studentsList: any[] = [];
 
-    // Parse Teachers EXACTLY like Code.gs
     teacherRows.forEach(row => {
         const cohort = (row[0] || '').toString().trim();
         let teacher = (row[1] || '').toString().trim();
-        
         if (cohort && teacher && cohort !== 'English Academy') {
             teacher = toTitleCase(teacher);
             cohortsSet.add(cohort);
@@ -65,14 +61,13 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
         }
     });
 
-    // Parse Students EXACTLY like Code.gs
     studentRows.forEach(row => {
-        const cohort = (row[2] || '').toString().trim(); // Col C
-        const branch = (row[3] || '').toString().trim(); // Col D
-        const name = (row[6] || '').toString().trim(); // Col G
-        const status = (row[55] || '').toString().trim().toLowerCase(); // Col BD
-        const grade = (row[57] || '').toString().trim(); // Col BF
-        const batch = (row[58] || '').toString().trim(); // Col BG
+        const cohort = (row[2] || '').toString().trim(); 
+        const branch = (row[3] || '').toString().trim(); 
+        const name = (row[6] || '').toString().trim(); 
+        const status = (row[55] || '').toString().trim().toLowerCase(); 
+        const grade = (row[57] || '').toString().trim(); 
+        const batch = (row[58] || '').toString().trim(); 
         const bUpper = batch.toUpperCase();
 
         if (cohort && batch && bUpper !== 'NA' && bUpper !== '#N/A' && cohort !== 'English Academy') {
@@ -96,42 +91,72 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
   }
 });
 
-// --- POST ROUTE (SAVE SESSION) ---
-app.post(['/api/session', '/session', '/api/index'], async (req: Request, res: Response) => {
+// --- POST ROUTE (EXTRA CLASS SESSION) ---
+app.post(['/api/session', '/session'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const data = req.body;
     
-    // Extract metadata from the first student (exactly like Code.gs)
     const studentMeta = data.selectedStudentsData && data.selectedStudentsData.length > 0 ? data.selectedStudentsData[0] : {};
     const totalStudents = data.selectedStudentsData ? data.selectedStudentsData.length : 0;
     const finalBranch = data.branch || studentMeta.branch || '';
     
-    // Exact 14-column layout from Code.gs
     const newRow = [
-        new Date().toLocaleString('en-GB'), // 1. Timestamp
-        data.cohort || '',                  // 2. Cohort
-        finalBranch,                        // 3. Branch
-        studentMeta.grade || '',            // 4. Grade
-        data.batchesList || '',             // 5. Batches
-        data.teacher || '',                 // 6. Teacher Name
-        data.date || '',                    // 7. Date of Session
-        data.sessionType || '',             // 8. Session Type
-        data.subject || '',                 // 9. Subject
-        data.studentsList || '',            // 10. Selected Students
-        data.topic || '',                   // 11. Topic
-        data.duration || '',                // 12. Class Duration
-        data.notes || '',                   // 13. Additional Notes
-        totalStudents                       // 14. Total Students
+        new Date().toLocaleString('en-GB'), 
+        data.cohort || '',                  
+        finalBranch,                        
+        studentMeta.grade || '',            
+        data.batchesList || '',             
+        data.teacher || '',                 
+        data.date || '',                    
+        data.sessionType || '',             
+        data.subject || '',                 
+        data.studentsList || '',            
+        data.topic || '',                   
+        data.duration || '',                
+        data.notes || '',                   
+        totalStudents                       
     ];
 
     await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'Session Logs!A:N', // Expanded to N to fit 14 columns
+        range: 'Session Logs!A:N', 
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [newRow] },
     });
     res.json({ success: true, message: "Session logged" });
+  } catch (e: any) { 
+    res.status(500).json({ message: "Google API Error: " + e.message }); 
+  }
+});
+
+// --- POST ROUTE (DPP FORM) ---
+app.post(['/api/dpp', '/dpp'], async (req: Request, res: Response) => {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
+    const data = req.body;
+    
+    // Map the dynamic entries array into multiple Google Sheet rows
+    const rowsToInsert = data.entries.map((entry: any) => [
+        new Date().toLocaleString('en-GB'), // 1. Timestamp
+        data.cohort || '',                  // 2. Cohort
+        data.branch || '',                  // 3. Branch (Centre)
+        data.teacher || '',                 // 4. Teacher
+        data.batchesList || '',             // 5. Batches
+        data.subject || '',                 // 6. Subject
+        entry.date || '',                   // 7. Date of DPP
+        entry.topic || '',                  // 8. Home Work Topic
+        entry.notes || '',                  // 9. Additional Notes
+        entry.attachment || ''              // 10. Attachment Link
+    ]);
+
+    await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'DPP Responses!A:J', 
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: rowsToInsert },
+    });
+    res.json({ success: true, message: `Successfully logged ${rowsToInsert.length} DPP entrie(s)!` });
   } catch (e: any) { 
     res.status(500).json({ message: "Google API Error: " + e.message }); 
   }
