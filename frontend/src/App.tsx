@@ -139,7 +139,7 @@ function ExtraClassForm({ initData, isLoading, mutation }: any) {
     } else {
       if (store.selectedStudents.size === 0) return toast.error('Please select at least one Student.'); finalStudents = Array.from(store.selectedStudents.values());
     }
-    mutation.mutate({ endpoint: '/session', payload: { ...data, cohort: store.cohort, branch: reqCentre ? store.centre : '', teacher: teacherEl.value, sessionType: store.sessionType, batchesList: Array.from(store.selectedBatches).join(', '), selectedStudentsData: finalStudents, studentsList: finalStudents.map(s => s.name).join(', ') } }, { onSuccess: () => { reset({ date: new Date().toISOString().split('T')[0], subject: '', topic: '', duration: '', notes: '' }); store.resetFormState(); if (teacherEl) teacherEl.value = ''; } });
+    mutation.mutate({ endpoint: '/session', payload: { ...data, cohort: store.cohort, branch: reqCentre ? store.centre : '', teacher: teacherEl.value, sessionType: store.sessionType, batchesList: Array.from(store.selectedBatches).join(', '), selectedStudentsData: finalStudents, studentsList: finalStudents.map((s: any) => s.name).join(', ') } }, { onSuccess: () => { reset({ date: new Date().toISOString().split('T')[0], subject: '', topic: '', duration: '', notes: '' }); store.resetFormState(); if (teacherEl) teacherEl.value = ''; } });
   };
 
   return (
@@ -148,23 +148,23 @@ function ExtraClassForm({ initData, isLoading, mutation }: any) {
       <Card>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 bg-slate-50/70 border border-slate-100 rounded-xl">
-            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
             <div><Label required>Teacher</Label><Select id="teacher" disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
           </div>
-          {reqCentre && <div className="p-5 bg-blue-50/50 rounded-xl"><Label required>Centre Name</Label><Select value={store.centre} onChange={(e:any) => store.setCentre(e.target.value)} required><option value="" disabled>Select Centre...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
+          {reqCentre && <div className="p-5 bg-blue-50/50 rounded-xl"><Label required>Centre Name</Label><Select value={store.centre} onChange={(e: any) => store.setCentre(e.target.value)} required><option value="" disabled>Select Centre...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div><Label required>Date</Label><Input type="date" {...register('date')} required /></div>
-            <div><Label required>Session Type</Label><Select value={store.sessionType} onChange={(e:any) => store.setSessionType(e.target.value)} required><option value="" disabled>Select...</option><option value="1:1">1:1</option><option value="SGC">SGC</option><option value="LGC">LGC</option></Select></div>
+            <div><Label required>Session Type</Label><Select value={store.sessionType} onChange={(e: any) => store.setSessionType(e.target.value)} required><option value="" disabled>Select...</option><option value="1:1">1:1</option><option value="SGC">SGC</option><option value="LGC">LGC</option></Select></div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b:string)=>b} renderItem={(b:string)=><span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={()=>store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length===0} /></div>
+            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b: string) => b} renderItem={(b: string) => <span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={() => store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length === 0} /></div>
             <div><Label required>Subject</Label><Select {...register('subject')} defaultValue="" required><option value="" disabled>Select...</option><option value="Physics">Physics</option><option value="Chemistry">Chemistry</option><option value="Maths">Maths</option><option value="Biology">Biology</option><option value="Social Science">Social Science</option><option value="Science(Combined)">Science(Combined)</option></Select></div>
           </div>
-          {store.sessionType === '1:1' && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Student</Label><Select id="singleStudent" defaultValue="" required><option value="" disabled>Select Student...</option>{students.map((s:any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} ({s.batch})</option>)}</Select></div>}
-          {(store.sessionType === 'SGC' || store.sessionType === 'LGC') && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Students</Label><MultiSelect items={students} selectedItems={store.selectedStudents} itemKey={(s:any)=>s.name} renderItem={(s:any)=>(<div><span className="font-bold">{s.name}</span> <span className="text-xs text-slate-500">({s.batch})</span></div>)} onToggle={store.toggleStudent} onSelectAll={()=>store.selectAllStudents(students)} onClearAll={store.clearAllStudents} placeholder="Search students..." disabled={students.length===0} /></div>}
+          {store.sessionType === '1:1' && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Student</Label><Select id="singleStudent" defaultValue="" required><option value="" disabled>Select Student...</option>{students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} ({s.batch})</option>)}</Select></div>}
+          {(store.sessionType === 'SGC' || store.sessionType === 'LGC') && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Students</Label><MultiSelect items={students} selectedItems={store.selectedStudents} itemKey={(s: any) => s.name} renderItem={(s: any) => (<div><span className="font-bold">{s.name}</span> <span className="text-xs text-slate-500">({s.batch})</span></div>)} onToggle={store.toggleStudent} onSelectAll={() => store.selectAllStudents(students)} onClearAll={store.clearAllStudents} placeholder="Search students..." disabled={students.length === 0} /></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div><Label required>Topic</Label><Input {...register('topic')} required /></div>
-            <div><Label required>Duration (mins)</Label><Select {...register('duration')} defaultValue="" required><option value="" disabled>Select...</option>{[15,30,45,60,75,90,105,120,135,150,165,180].map(m=><option key={m} value={m}>{m}</option>)}</Select></div>
+            <div><Label required>Duration (mins)</Label><Select {...register('duration')} defaultValue="" required><option value="" disabled>Select...</option>{[15,30,45,60,75,90,105,120,135,150,165,180].map((m: number) => <option key={m} value={m}>{m}</option>)}</Select></div>
           </div>
           <div><Label>Notes</Label><textarea {...register('notes')} className="w-full p-4 border rounded-xl" rows={3}/></div>
           <Button type="submit" isLoading={mutation.isPending}>Save Session Record</Button>
@@ -200,12 +200,12 @@ function DPPForm({ initData, isLoading, mutation }: any) {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         <Card>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
             <div><Label required>Teacher</Label><Select id="teacherDpp" disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
           </div>
-          {reqCentre && <div className="mb-6"><Label required>Centre</Label><Select value={store.centre} onChange={(e:any) => store.setCentre(e.target.value)} required><option value="" disabled>Select...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
+          {reqCentre && <div className="mb-6"><Label required>Centre</Label><Select value={store.centre} onChange={(e: any) => store.setCentre(e.target.value)} required><option value="" disabled>Select...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b:string)=>b} renderItem={(b:string)=><span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={()=>store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length===0} /></div>
+            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b: string) => b} renderItem={(b: string) => <span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={() => store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length === 0} /></div>
             <div><Label required>Subject</Label><Select {...register('subject')} defaultValue="" required><option value="" disabled>Select...</option><option value="Physics">Physics</option><option value="Chemistry">Chemistry</option><option value="Maths">Maths</option><option value="Biology">Biology</option><option value="Social Science">Social Science</option><option value="Science(Combined)">Science(Combined)</option></Select></div>
           </div>
         </Card>
@@ -221,7 +221,7 @@ function DPPForm({ initData, isLoading, mutation }: any) {
               <div className="mb-6"><Label>Additional Notes</Label><textarea {...register(`entries.${index}.notes`)} className="w-full p-4 border rounded-xl" rows={2}/></div>
               <div className="p-5 bg-slate-50 border rounded-xl"><Label>Upload File (Max 3MB)</Label>
                 <input type="file" className="mt-2 w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-indigo-100 file:text-indigo-700"
-                  onChange={(e) => {
+                  onChange={(e: any) => {
                     const file = e.target.files?.[0];
                     if (!file) { setValue(`entries.${index}.attachment`, null); return; }
                     if (file.size > 3*1024*1024) { toast.error("File is too large!"); e.target.value = ''; setValue(`entries.${index}.attachment`, null); return; }
@@ -273,10 +273,10 @@ function LeaveForm({ initData, isLoading, mutation }: any) {
       <Card className="border-emerald-100">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 bg-emerald-50/40 rounded-xl">
-            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
             <div><Label required>Teacher Name</Label><Select {...register('teacher')} disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
           </div>
-          {reqClusterHead && <div className="p-5 bg-slate-50 rounded-xl"><Label required>Cluster Head</Label><Select {...register('clusterHead')} defaultValue="" required><option value="" disabled>Select Head...</option>{clusterHeads.map(c => <option key={c} value={c}>{c}</option>)}</Select></div>}
+          {reqClusterHead && <div className="p-5 bg-slate-50 rounded-xl"><Label required>Cluster Head</Label><Select {...register('clusterHead')} defaultValue="" required><option value="" disabled>Select Head...</option>{clusterHeads.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div><Label required>Leave From Date</Label><Input type="date" {...register('fromDate')} required /></div>
             <div><Label required>Leave To Date</Label><Input type="date" {...register('toDate')} required /></div>
@@ -294,17 +294,15 @@ function LeaveForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 4. CENTRAL LEAVE DASHBOARD (WITH RBAC)
+// 4. CENTRAL LEAVE DASHBOARD (Fixed Types)
 // ==========================================
 function LeaveDashboard() {
   const store = useSessionStore();
   const user = store.currentUser;
   
-  // Login State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   
-  // Filters State
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterCohort, setFilterCohort] = useState('');
@@ -316,14 +314,13 @@ function LeaveDashboard() {
 
   const handleLogin = (e: React.FormEvent) => { e.preventDefault(); loginMutation.mutate({ username, password }); };
 
-  // Filter Logic (RBAC Enforced)
+  // Explicitly type the filtered array so TS is happy
   const filteredLeaves = useMemo(() => {
     if (!leavesData) return [];
-    let filtered = leavesData;
+    let filtered: any[] = leavesData;
 
-    // Faculty can ONLY see their own leaves
     if (user?.role === 'Faculty') {
-      filtered = filtered.filter((l: any) => l.teacher === user.username);
+      filtered = filtered.filter((l: any) => l.teacher === user?.username);
     } else {
       if (filterCohort) filtered = filtered.filter((l: any) => l.cohort === filterCohort);
       if (filterTeacher) filtered = filtered.filter((l: any) => l.teacher === filterTeacher);
@@ -335,10 +332,16 @@ function LeaveDashboard() {
     return filtered;
   }, [leavesData, user, filterStartDate, filterEndDate, filterCohort, filterTeacher]);
 
-  const cohortsList = useMemo(() => Array.from(new Set(leavesData?.map((l: any) => l.cohort))).filter(Boolean).sort(), [leavesData]);
-  const teachersList = useMemo(() => Array.from(new Set(leavesData?.map((l: any) => l.teacher))).filter(Boolean).sort(), [leavesData]);
+  const cohortsList = useMemo(() => {
+      if (!leavesData) return [];
+      return Array.from(new Set(leavesData.map((l: any) => l.cohort))).filter(Boolean).sort() as string[];
+  }, [leavesData]);
 
-  // KPI Calculations
+  const teachersList = useMemo(() => {
+      if (!leavesData) return [];
+      return Array.from(new Set(leavesData.map((l: any) => l.teacher))).filter(Boolean).sort() as string[];
+  }, [leavesData]);
+
   const totalLeaves = filteredLeaves.length;
   const approvedLeaves = filteredLeaves.filter((l: any) => l.status === 'Approve').length;
   const rejectedLeaves = filteredLeaves.filter((l: any) => l.status === 'Reject').length;
@@ -354,8 +357,8 @@ function LeaveDashboard() {
             <p className="text-slate-500 text-sm mt-1">Enter your credentials to access records.</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
-            <div><Label>User Name (Teacher Name)</Label><Input value={username} onChange={e => setUsername(e.target.value)} required placeholder="e.g. Vishal Vaishnav..." /></div>
-            <div><Label>Password</Label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Enter password" /></div>
+            <div><Label>User Name (Teacher Name)</Label><Input value={username} onChange={(e: any) => setUsername(e.target.value)} required placeholder="e.g. Vishal Vaishnav..." /></div>
+            <div><Label>Password</Label><Input type="password" value={password} onChange={(e: any) => setPassword(e.target.value)} required placeholder="Enter password" /></div>
             <Button type="submit" isLoading={loginMutation.isPending} className="w-full mt-4 bg-slate-800 hover:bg-slate-900">Sign In</Button>
           </form>
         </Card>
@@ -394,18 +397,18 @@ function LeaveDashboard() {
 
       <Card className="mb-8 p-5 bg-slate-50/50">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div><Label className="text-xs">From Date</Label><Input type="date" value={filterStartDate} onChange={e=>setFilterStartDate(e.target.value)} className="py-2" /></div>
-          <div><Label className="text-xs">To Date</Label><Input type="date" value={filterEndDate} onChange={e=>setFilterEndDate(e.target.value)} className="py-2" /></div>
+          <div><Label className="text-xs">From Date</Label><Input type="date" value={filterStartDate} onChange={(e: any) => setFilterStartDate(e.target.value)} className="py-2" /></div>
+          <div><Label className="text-xs">To Date</Label><Input type="date" value={filterEndDate} onChange={(e: any) => setFilterEndDate(e.target.value)} className="py-2" /></div>
           
-          {(user.role === 'HR' || user.role === 'Admin') && (
+          {(user?.role === 'HR' || user?.role === 'Admin') && (
             <>
               <div>
                 <Label className="text-xs">Filter Cohort</Label>
-                <Select value={filterCohort} onChange={(e:any)=>setFilterCohort(e.target.value)} className="py-2"><option value="">All Cohorts</option>{cohortsList.map((c:any) => <option key={c} value={c}>{c}</option>)}</Select>
+                <Select value={filterCohort} onChange={(e: any) => setFilterCohort(e.target.value)} className="py-2"><option value="">All Cohorts</option>{cohortsList.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select>
               </div>
               <div>
                 <Label className="text-xs">Filter Faculty</Label>
-                <Select value={filterTeacher} onChange={(e:any)=>setFilterTeacher(e.target.value)} className="py-2"><option value="">All Faculties</option>{teachersList.map((t:any) => <option key={t} value={t}>{t}</option>)}</Select>
+                <Select value={filterTeacher} onChange={(e: any) => setFilterTeacher(e.target.value)} className="py-2"><option value="">All Faculties</option>{teachersList.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select>
               </div>
             </>
           )}
@@ -419,7 +422,7 @@ function LeaveDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
-                <tr><th className="px-6 py-4">Timestamp</th><th className="px-6 py-4">Teacher</th><th className="px-6 py-4">Dates</th><th className="px-6 py-4">Days</th><th className="px-6 py-4">Reason & Notes</th><th className="px-6 py-4">Status</th>{user.role === 'HR' && <th className="px-6 py-4 text-right">Actions</th>}</tr>
+                <tr><th className="px-6 py-4">Timestamp</th><th className="px-6 py-4">Teacher</th><th className="px-6 py-4">Dates</th><th className="px-6 py-4">Days</th><th className="px-6 py-4">Reason & Notes</th><th className="px-6 py-4">Status</th>{user?.role === 'HR' && <th className="px-6 py-4 text-right">Actions</th>}</tr>
               </thead>
               <tbody>
                 {filteredLeaves.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">No records found.</td></tr>}
@@ -433,7 +436,7 @@ function LeaveDashboard() {
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${l.status === 'Approve' ? 'bg-green-100 text-green-800' : l.status === 'Reject' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{l.status}</span>
                     </td>
-                    {user.role === 'HR' && (
+                    {user?.role === 'HR' && (
                       <td className="px-6 py-4 text-right">
                         {l.status === 'Pending' ? (
                           <div className="flex items-center justify-end gap-2">
@@ -475,7 +478,7 @@ function MainApplication() {
           </div>
         </aside>
         <main className="flex-1 p-6 md:p-12 w-full overflow-y-auto">
-          {isError ? <ErrorBanner message="Network Error." onRetry={()=>refetch()} /> : (
+          {isError ? <ErrorBanner message="Network Error." onRetry={() => refetch()} /> : (
             <>
               {currentView === 'home' && <HomeDashboard />}
               {currentView === 'session' && <ExtraClassForm initData={initData} isLoading={isLoading} mutation={mutation} />}
@@ -490,4 +493,11 @@ function MainApplication() {
   );
 }
 
-export default function App() { return <QueryClientProvider client={queryClient}><MainApplication /><Toaster position="bottom-right" /></QueryClientProvider>; }
+export default function App() { 
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MainApplication />
+      <Toaster position="bottom-right" />
+    </QueryClientProvider>
+  ); 
+}
