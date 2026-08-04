@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { create } from 'zustand';
 import { useQuery, useMutation, QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,27 +6,24 @@ import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
 import { 
   GraduationCap, Save, Sparkles, Building2, Calendar, CheckCircle2, 
-  ArrowLeft, FileText, Users, Plus, Trash2, Paperclip 
+  ArrowLeft, FileText, Users, Plus, Trash2, Palmtree, LayoutDashboard, Clock 
 } from 'lucide-react';
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
-  timeout: 15000,
-});
+const apiClient = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api', timeout: 15000 });
 const queryClient = new QueryClient();
 
 // ==========================================
 // ZUSTAND GLOBAL STATE
 // ==========================================
 interface SessionStore {
-  currentView: 'home' | 'session' | 'dpp';
+  currentView: 'home' | 'session' | 'dpp' | 'leave' | 'dashboard';
   cohort: string;
   centre: string;
   sessionType: string;
   selectedBatches: Set<string>;
   selectedStudents: Map<string, any>;
-  setCurrentView: (v: 'home' | 'session' | 'dpp') => void;
+  setCurrentView: (v: 'home' | 'session' | 'dpp' | 'leave' | 'dashboard') => void;
   setCohort: (c: string) => void;
   setCentre: (c: string) => void;
   setSessionType: (t: string) => void;
@@ -40,45 +37,24 @@ interface SessionStore {
 }
 
 const useSessionStore = create<SessionStore>((set) => ({
-  currentView: 'home',
-  cohort: '',
-  centre: '',
-  sessionType: '',
-  selectedBatches: new Set<string>(),
-  selectedStudents: new Map<string, any>(),
-
+  currentView: 'home', cohort: '', centre: '', sessionType: '', selectedBatches: new Set<string>(), selectedStudents: new Map<string, any>(),
   setCurrentView: (view) => set({ currentView: view }),
   setCohort: (cohort) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
   setCentre: (centre) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
   setSessionType: (sessionType) => set({ sessionType, selectedStudents: new Map() }),
-
   toggleBatch: (batch) => set((state) => {
-    const b = new Set(state.selectedBatches);
-    b.has(batch) ? b.delete(batch) : b.add(batch);
-    const s = new Map(state.selectedStudents);
-    for (const [name, stu] of s.entries()) {
-      if (!b.has(stu.batch)) s.delete(name);
-    }
+    const b = new Set(state.selectedBatches); b.has(batch) ? b.delete(batch) : b.add(batch);
+    const s = new Map(state.selectedStudents); for (const [name, stu] of s.entries()) if (!b.has(stu.batch)) s.delete(name);
     return { selectedBatches: b, selectedStudents: s };
   }),
-
   selectAllBatches: (batches) => set({ selectedBatches: new Set(batches) }),
   clearAllBatches: () => set({ selectedBatches: new Set(), selectedStudents: new Map() }),
-
   toggleStudent: (student) => set((state) => {
-    const s = new Map(state.selectedStudents);
-    s.has(student.name) ? s.delete(student.name) : s.set(student.name, student);
+    const s = new Map(state.selectedStudents); s.has(student.name) ? s.delete(student.name) : s.set(student.name, student);
     return { selectedStudents: s };
   }),
-
-  selectAllStudents: (students) => {
-    const s = new Map<string, any>();
-    students.forEach(stu => s.set(stu.name, stu));
-    set({ selectedStudents: s });
-  },
-  
+  selectAllStudents: (students) => { const s = new Map<string, any>(); students.forEach(stu => s.set(stu.name, stu)); set({ selectedStudents: s }); },
   clearAllStudents: () => set({ selectedStudents: new Map() }),
-  
   resetFormState: () => set({ cohort: '', centre: '', sessionType: '', selectedBatches: new Set(), selectedStudents: new Map() })
 }));
 
@@ -89,643 +65,312 @@ const useSessionStore = create<SessionStore>((set) => ({
 function HomeDashboard() {
   const setView = useSessionStore(state => state.setCurrentView);
   const resetFormState = useSessionStore(state => state.resetFormState);
-
-  const navigateTo = (view: 'session' | 'dpp') => {
-    resetFormState();
-    setView(view);
-  };
+  const navigateTo = (view: 'session' | 'dpp' | 'leave' | 'dashboard') => { resetFormState(); setView(view); };
 
   return (
-    <div className="max-w-4xl mx-auto w-full animate-fade-in py-12">
+    <div className="max-w-5xl mx-auto w-full animate-fade-in py-12">
       <div className="text-center mb-16">
         <div className="inline-flex items-center justify-center p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-xl shadow-blue-500/30 mb-6">
           <GraduationCap className="w-12 h-12 text-white stroke-[2]" />
         </div>
         <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-4">PW Gulf Faculty Portal</h1>
-        <p className="text-slate-500 text-lg font-medium">Select a module to log your session or submit materials.</p>
+        <p className="text-slate-500 text-lg font-medium">Select a module to log your session, submit materials, or manage leaves.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-6">
-        <button 
-          onClick={() => navigateTo('session')}
-          className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-blue-400 transition-all duration-300 relative overflow-hidden"
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Users className="w-32 h-32 text-blue-600" />
-          </div>
-          <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
-            <Users className="w-7 h-7 text-blue-600" />
-          </div>
+        <button onClick={() => navigateTo('session')} className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-blue-400 transition-all duration-300 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><Users className="w-32 h-32 text-blue-600" /></div>
+          <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-6"><Users className="w-7 h-7 text-blue-600" /></div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Extra Class Session</h2>
           <p className="text-slate-500 font-medium">Log 1:1, SGC, or LGC doubt classes and track student attendance.</p>
         </button>
 
-        <button 
-          onClick={() => navigateTo('dpp')}
-          className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:indigo-400 transition-all duration-300 relative overflow-hidden"
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <FileText className="w-32 h-32 text-indigo-600" />
-          </div>
-          <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mb-6">
-            <FileText className="w-7 h-7 text-indigo-600" />
-          </div>
+        <button onClick={() => navigateTo('dpp')} className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-indigo-400 transition-all duration-300 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><FileText className="w-32 h-32 text-indigo-600" /></div>
+          <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mb-6"><FileText className="w-7 h-7 text-indigo-600" /></div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">DPP Form</h2>
-          <p className="text-slate-500 font-medium">Submit daily practice problems, homework topics, and direct file attachments.</p>
+          <p className="text-slate-500 font-medium">Submit daily practice problems, homework topics, and batch attachments.</p>
+        </button>
+
+        <button onClick={() => navigateTo('leave')} className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-emerald-400 transition-all duration-300 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><Palmtree className="w-32 h-32 text-emerald-600" /></div>
+          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6"><Palmtree className="w-7 h-7 text-emerald-600" /></div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Faculty Leave Form</h2>
+          <p className="text-slate-500 font-medium">Request time off, sick leaves, and alert your cluster heads.</p>
+        </button>
+
+        <button onClick={() => navigateTo('dashboard')} className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-slate-800 transition-all duration-300 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><LayoutDashboard className="w-32 h-32 text-slate-800" /></div>
+          <div className="w-14 h-14 bg-slate-200 rounded-2xl flex items-center justify-center mb-6"><LayoutDashboard className="w-7 h-7 text-slate-800" /></div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Central Dashboard</h2>
+          <p className="text-slate-500 font-medium">View all leave requests, track approvals, and manage workflow.</p>
         </button>
       </div>
     </div>
   );
 }
 
-
 // ==========================================
-// 1. EXTRA CLASS SESSION FORM (Existing)
+// 1. EXTRA CLASS SESSION FORM
 // ==========================================
 function ExtraClassForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
   const setView = useSessionStore(state => state.setCurrentView);
-  const { register, handleSubmit, reset } = useForm<any>({
-    defaultValues: { date: new Date().toISOString().split('T')[0] }
-  });
+  const { register, handleSubmit, reset } = useForm<any>({ defaultValues: { date: new Date().toISOString().split('T')[0] } });
 
   const reqCentre = store.cohort === 'Qatar Offline';
-
-  const teachers = useMemo(() => {
-    if (!initData?.teachers || !store.cohort) return [];
-    const filtered = initData.teachers.filter((t: any) => t.cohort === store.cohort);
-    return Array.from(new Set<string>(filtered.map((t: any) => t.name))).sort();
-  }, [initData, store.cohort]);
-
-  const centres = useMemo(() => {
-    if (!initData?.students || !store.cohort) return [];
-    const filtered = initData.students.filter((s: any) => s.cohort === store.cohort && s.branch);
-    return Array.from(new Set<string>(filtered.map((s: any) => s.branch))).sort();
-  }, [initData, store.cohort]);
-
-  const batches = useMemo(() => {
-    if (!initData?.students || !store.cohort) return [];
-    let filtered = initData.students.filter((s: any) => s.cohort === store.cohort);
-    if (reqCentre && store.centre) filtered = filtered.filter((s: any) => s.branch === store.centre);
-    return Array.from(new Set<string>(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
-  }, [initData, store.cohort, store.centre, reqCentre]);
-  
-  const students = useMemo(() => {
-    if (!initData?.students || store.selectedBatches.size === 0) return [];
-    const bArr = Array.from(store.selectedBatches);
-    let filtered = initData.students.filter((s: any) => s.cohort === store.cohort && bArr.includes(s.batch));
-    if (reqCentre && store.centre) filtered = filtered.filter((s: any) => s.branch === store.centre);
-    const unique = new Map<string, any>();
-    filtered.forEach((s: any) => unique.set(s.name, s));
-    return Array.from(unique.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  }, [initData, store.cohort, store.selectedBatches, store.centre, reqCentre]);
+  const teachers = useMemo(() => { if (!initData?.teachers || !store.cohort) return []; return Array.from(new Set<string>(initData.teachers.filter((t: any) => t.cohort === store.cohort).map((t: any) => t.name))).sort(); }, [initData, store.cohort]);
+  const centres = useMemo(() => { if (!initData?.students || !store.cohort) return []; return Array.from(new Set<string>(initData.students.filter((s: any) => s.cohort === store.cohort && s.branch).map((s: any) => s.branch))).sort(); }, [initData, store.cohort]);
+  const batches = useMemo(() => { if (!initData?.students || !store.cohort) return []; let f = initData.students.filter((s: any) => s.cohort === store.cohort); if (reqCentre && store.centre) f = f.filter((s: any) => s.branch === store.centre); return Array.from(new Set<string>(f.map((s: any) => s.batch).filter(Boolean))).sort(); }, [initData, store.cohort, store.centre, reqCentre]);
+  const students = useMemo(() => { if (!initData?.students || store.selectedBatches.size === 0) return []; const bArr = Array.from(store.selectedBatches); let f = initData.students.filter((s: any) => s.cohort === store.cohort && bArr.includes(s.batch)); if (reqCentre && store.centre) f = f.filter((s: any) => s.branch === store.centre); const unique = new Map<string, any>(); f.forEach((s: any) => unique.set(s.name, s)); return Array.from(unique.values()).sort((a: any, b: any) => a.name.localeCompare(b.name)); }, [initData, store.cohort, store.selectedBatches, store.centre, reqCentre]);
 
   const onSubmit = (data: any) => {
-    if (!store.cohort) return toast.error('Please select a Cohort.');
+    if (!store.cohort || !store.sessionType || store.selectedBatches.size === 0) return toast.error('Please fill required fields.');
     const teacherEl = document.getElementById('teacher') as HTMLSelectElement;
-    if (!teacherEl || !teacherEl.value) return toast.error('Please select a Teacher / Mentor.');
-    if (reqCentre && !store.centre) return toast.error('Please select a Centre Name for Qatar Offline.');
-    if (!store.sessionType) return toast.error('Please select a Session Type.');
-    if (store.selectedBatches.size === 0) return toast.error('Please select at least one Batch.');
-    
+    if (!teacherEl || !teacherEl.value) return toast.error('Please select a Teacher.');
     let finalStudents: any[] = [];
     if (store.sessionType === '1:1') {
-      const el = document.getElementById('singleStudent') as HTMLSelectElement;
-      if (!el || !el.value) return toast.error('Please select a Student for 1:1 session.');
-      finalStudents.push(JSON.parse(el.value));
+      const el = document.getElementById('singleStudent') as HTMLSelectElement; if (!el || !el.value) return toast.error('Please select a Student.'); finalStudents.push(JSON.parse(el.value));
     } else {
-      if (store.selectedStudents.size === 0) return toast.error('Please select at least one Student.');
-      finalStudents = Array.from(store.selectedStudents.values());
+      if (store.selectedStudents.size === 0) return toast.error('Please select at least one Student.'); finalStudents = Array.from(store.selectedStudents.values());
     }
-
-    mutation.mutate(
-      {
-        endpoint: '/session',
-        payload: {
-          ...data,
-          cohort: store.cohort,
-          branch: reqCentre ? store.centre : '',
-          teacher: teacherEl.value,
-          sessionType: store.sessionType,
-          batchesList: Array.from(store.selectedBatches).join(', '),
-          selectedStudentsData: finalStudents,
-          studentsList: finalStudents.map(s => s.name).join(', ')
-        }
-      },
-      {
-        onSuccess: () => {
-          reset({ date: new Date().toISOString().split('T')[0], subject: '', topic: '', duration: '', notes: '' });
-          store.resetFormState();
-          if (teacherEl) teacherEl.value = '';
-        }
-      }
-    );
+    mutation.mutate({ endpoint: '/session', payload: { ...data, cohort: store.cohort, branch: reqCentre ? store.centre : '', teacher: teacherEl.value, sessionType: store.sessionType, batchesList: Array.from(store.selectedBatches).join(', '), selectedStudentsData: finalStudents, studentsList: finalStudents.map(s => s.name).join(', ') } }, { onSuccess: () => { reset({ date: new Date().toISOString().split('T')[0], subject: '', topic: '', duration: '', notes: '' }); store.resetFormState(); if (teacherEl) teacherEl.value = ''; } });
   };
 
   return (
     <div className="animate-fade-in">
-      <header className="mb-8 md:mb-10">
-        <button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-bold transition-colors mb-6">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </button>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100/80 border border-blue-200 text-blue-800 text-xs font-bold uppercase tracking-wider mb-3 ml-4">
-          <Users className="w-3.5 h-3.5" /> Extra Class Module
-        </div>
-        <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight">Log Extra Class Session</h1>
-        <p className="text-slate-500 text-sm font-medium mt-1.5">Record comprehensive details for 1:1, SGC, or LGC doubt classes.</p>
-      </header>
-
+      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button><h1 className="text-3xl font-black">Log Extra Class Session</h1></header>
       <Card>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
-            <div className="w-full">
-              <Label required helper="Filters mentor list">Cohort</Label>
-              <Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} disabled={isLoading || mutation.isPending} required>
-                <option value="" disabled>Select a Cohort...</option>
-                {initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </div>
-            <div className="w-full">
-              <Label required helper="Auto-mapped to cohort">Teacher / Mentor</Label>
-              <Select id="teacher" disabled={!store.cohort || isLoading || mutation.isPending} defaultValue="" required>
-                <option value="" disabled>Waiting for Cohort...</option>
-                {teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}
-              </Select>
-            </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 bg-slate-50/70 border border-slate-100 rounded-xl">
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Teacher</Label><Select id="teacher" disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
           </div>
-
-          {reqCentre && (
-            <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-blue-50/50 border border-blue-100 animate-fade-in">
-              <div className="w-full">
-                <Label required helper="Strictly required for Qatar Offline">Centre Name (Branch)</Label>
-                <Select value={store.centre} onChange={(e: any) => store.setCentre(e.target.value)} disabled={mutation.isPending} required>
-                  <option value="" disabled>Select Centre...</option>
-                  {centres.map((c: string) => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </div>
-            </div>
-          )}
-          
+          {reqCentre && <div className="p-5 bg-blue-50/50 rounded-xl"><Label required>Centre Name</Label><Select value={store.centre} onChange={(e:any) => store.setCentre(e.target.value)} required><option value="" disabled>Select Centre...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="w-full">
-              <Label required helper="Session date">Date of Session</Label>
-              <Input type="date" {...register('date')} disabled={mutation.isPending} required />
-            </div>
-            <div className="w-full">
-              <Label required helper="Determines student selection mode">Session Type</Label>
-              <Select value={store.sessionType} onChange={(e: any) => store.setSessionType(e.target.value)} disabled={mutation.isPending} required>
-                <option value="" disabled>Select Session Type...</option>
-                <option value="1:1">1:1 (Single Student Doubt Solving)</option>
-                <option value="SGC">SGC (Short Group Discussion - Multi Student)</option>
-                <option value="LGC">LGC (Large Group Discussion - Multi Student)</option>
-              </Select>
-            </div>
+            <div><Label required>Date</Label><Input type="date" {...register('date')} required /></div>
+            <div><Label required>Session Type</Label><Select value={store.sessionType} onChange={(e:any) => store.setSessionType(e.target.value)} required><option value="" disabled>Select...</option><option value="1:1">1:1</option><option value="SGC">SGC</option><option value="LGC">LGC</option></Select></div>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="w-full">
-              <Label required helper="Multi-select support">Batches</Label>
-              <MultiSelect
-                items={batches}
-                selectedItems={store.selectedBatches}
-                itemKey={(b: string) => b}
-                renderItem={(b: string) => <span className="font-bold text-slate-700">{b}</span>}
-                onToggle={store.toggleBatch}
-                onSelectAll={() => store.selectAllBatches(batches)}
-                onClearAll={store.clearAllBatches}
-                placeholder={!store.cohort ? "Select Cohort first..." : batches.length === 0 ? "No batches available" : "Search & select batches..."}
-                disabled={batches.length === 0 || mutation.isPending}
-              />
-            </div>
-            <div className="w-full">
-              <Label required helper="Curriculum subject">Subject</Label>
-              <Select {...register('subject')} disabled={mutation.isPending} defaultValue="" required>
-                <option value="" disabled>Select Subject...</option>
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Maths">Maths</option>
-                <option value="Biology">Biology</option>
-                <option value="Social Science">Social Science</option>
-                <option value="Science(Combined)">Science(Combined)</option>
-              </Select>
-            </div>
+            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b:string)=>b} renderItem={(b:string)=><span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={()=>store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length===0} /></div>
+            <div><Label required>Subject</Label><Select {...register('subject')} defaultValue="" required><option value="" disabled>Select...</option><option value="Physics">Physics</option><option value="Chemistry">Chemistry</option><option value="Maths">Maths</option><option value="Biology">Biology</option><option value="Social Science">Social Science</option><option value="Science(Combined)">Science(Combined)</option></Select></div>
           </div>
-
-          {store.sessionType === '1:1' && (
-            <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
-              <div className="w-full">
-                <Label required helper="Filtered by selected batches">Select Student (1:1 Mode)</Label>
-                <Select id="singleStudent" disabled={students.length === 0 || mutation.isPending} defaultValue="" required>
-                  <option value="" disabled>{store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Select Student..."}</option>
-                  {students.map((s: any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} (Grade: {s.grade || 'N/A'} | Batch: {s.batch})</option>)}
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {(store.sessionType === 'SGC' || store.sessionType === 'LGC') && (
-            <div className="grid grid-cols-1 gap-6 p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 animate-fade-in">
-              <div className="w-full">
-                <Label required helper="Search by name, grade or batch">Select Students (Group Mode)</Label>
-                <MultiSelect
-                  items={students}
-                  selectedItems={store.selectedStudents}
-                  itemKey={(s: any) => s.name}
-                  renderItem={(s: any) => (
-                    <div className="flex flex-col py-0.5">
-                      <span className="font-bold text-slate-800">{s.name}</span>
-                      <span className="text-[11px] font-semibold text-slate-400">Batch: <strong className="text-blue-600">{s.batch}</strong> | Grade: {s.grade || 'N/A'}</span>
-                    </div>
-                  )}
-                  onToggle={store.toggleStudent}
-                  onSelectAll={() => store.selectAllStudents(students)}
-                  onClearAll={store.clearAllStudents}
-                  placeholder={store.selectedBatches.size === 0 ? "Waiting for Batch selection..." : "Search & select students..."}
-                  disabled={students.length === 0 || mutation.isPending}
-                />
-              </div>
-            </div>
-          )}
-
+          {store.sessionType === '1:1' && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Student</Label><Select id="singleStudent" defaultValue="" required><option value="" disabled>Select Student...</option>{students.map((s:any) => <option key={s.name} value={JSON.stringify(s)}>{s.name} ({s.batch})</option>)}</Select></div>}
+          {(store.sessionType === 'SGC' || store.sessionType === 'LGC') && <div className="p-5 bg-indigo-50/40 rounded-xl"><Label required>Select Students</Label><MultiSelect items={students} selectedItems={store.selectedStudents} itemKey={(s:any)=>s.name} renderItem={(s:any)=>(<div><span className="font-bold">{s.name}</span> <span className="text-xs text-slate-500">({s.batch})</span></div>)} onToggle={store.toggleStudent} onSelectAll={()=>store.selectAllStudents(students)} onClearAll={store.clearAllStudents} placeholder="Search students..." disabled={students.length===0} /></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="w-full">
-              <Label required helper="Specific doubt covered">Topic Discussed</Label>
-              <Input {...register('topic')} placeholder="E.g., Kinematics Rotational Dynamics Doubt Solving" disabled={mutation.isPending} required />
-            </div>
-            <div className="w-full">
-              <Label required helper="Class length in minutes">Class Duration</Label>
-              <Select {...register('duration')} disabled={mutation.isPending} defaultValue="" required>
-                <option value="" disabled>Select Duration...</option>
-                {[15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180].map(m => <option key={m} value={m}>{m} minutes ({m/60} hrs)</option>)}
-              </Select>
-            </div>
+            <div><Label required>Topic</Label><Input {...register('topic')} required /></div>
+            <div><Label required>Duration (mins)</Label><Select {...register('duration')} defaultValue="" required><option value="" disabled>Select...</option>{[15,30,45,60,75,90,105,120,135,150,165,180].map(m=><option key={m} value={m}>{m}</option>)}</Select></div>
           </div>
-
-          <div className="w-full">
-            <Label helper="Optional faculty observations">Additional Notes</Label>
-            <textarea
-              {...register('notes')}
-              className="w-full p-4 bg-white/90 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium transition-all duration-200 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 disabled:bg-slate-100"
-              rows={3}
-              placeholder="Any specific student observations, homework assigned, or follow-up needed?"
-              disabled={mutation.isPending} 
-            />
-          </div>
-
-          <div className="pt-4 border-t border-slate-200/60 flex justify-end">
-            <Button type="submit" isLoading={mutation.isPending} className="md:w-auto md:min-w-[240px] shadow-xl shadow-blue-600/20">
-              <Save className="w-4 h-4 stroke-[2.5]" /> Save Session Record
-            </Button>
-          </div>
-
+          <div><Label>Notes</Label><textarea {...register('notes')} className="w-full p-4 border rounded-xl" rows={3}/></div>
+          <Button type="submit" isLoading={mutation.isPending}>Save Session Record</Button>
         </form>
       </Card>
     </div>
   );
 }
 
-
 // ==========================================
-// 2. DPP FORM WITH NATIVE FILE UPLOADER
+// 2. DPP FORM
 // ==========================================
 function DPPForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
   const setView = useSessionStore(state => state.setCurrentView);
-  
-  const { register, control, handleSubmit, reset, setValue, watch } = useForm<any>({
-    defaultValues: { 
-      entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null }] 
-    }
-  });
-  
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "entries"
-  });
+  const { register, control, handleSubmit, reset, setValue } = useForm<any>({ defaultValues: { entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: null }] } });
+  const { fields, append, remove } = useFieldArray({ control, name: "entries" });
 
   const reqCentre = store.cohort === 'Qatar Offline';
-
-  const teachers = useMemo(() => {
-    if (!initData?.teachers || !store.cohort) return [];
-    const filtered = initData.teachers.filter((t: any) => t.cohort === store.cohort);
-    return Array.from(new Set<string>(filtered.map((t: any) => t.name))).sort();
-  }, [initData, store.cohort]);
-
-  const centres = useMemo(() => {
-    if (!initData?.students || !store.cohort) return [];
-    const filtered = initData.students.filter((s: any) => s.cohort === store.cohort && s.branch);
-    return Array.from(new Set<string>(filtered.map((s: any) => s.branch))).sort();
-  }, [initData, store.cohort]);
-
-  const batches = useMemo(() => {
-    if (!initData?.students || !store.cohort) return [];
-    let filtered = initData.students.filter((s: any) => s.cohort === store.cohort);
-    if (reqCentre && store.centre) filtered = filtered.filter((s: any) => s.branch === store.centre);
-    return Array.from(new Set<string>(filtered.map((s: any) => s.batch).filter(Boolean))).sort();
-  }, [initData, store.cohort, store.centre, reqCentre]);
-
-  // Handler for file upload input
-  const handleFileChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setValue(`entries.${index}.attachmentData`, null);
-      return;
-    }
-    // Limit to 3.5MB to ensure Vercel serverless functions do not time out
-    if (file.size > 3.5 * 1024 * 1024) {
-      toast.error("File is too large! Please select a file smaller than 3.5 MB due to cloud limits.");
-      e.target.value = '';
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setValue(`entries.${index}.attachmentData`, {
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        fileData: reader.result as string
-      });
-      toast.success(`Attached: ${file.name}`, { icon: '📎' });
-    };
-    reader.readAsDataURL(file);
-  };
+  const teachers = useMemo(() => { if (!initData?.teachers || !store.cohort) return []; return Array.from(new Set<string>(initData.teachers.filter((t: any) => t.cohort === store.cohort).map((t: any) => t.name))).sort(); }, [initData, store.cohort]);
+  const centres = useMemo(() => { if (!initData?.students || !store.cohort) return []; return Array.from(new Set<string>(initData.students.filter((s: any) => s.cohort === store.cohort && s.branch).map((s: any) => s.branch))).sort(); }, [initData, store.cohort]);
+  const batches = useMemo(() => { if (!initData?.students || !store.cohort) return []; let f = initData.students.filter((s: any) => s.cohort === store.cohort); if (reqCentre && store.centre) f = f.filter((s: any) => s.branch === store.centre); return Array.from(new Set<string>(f.map((s: any) => s.batch).filter(Boolean))).sort(); }, [initData, store.cohort, store.centre, reqCentre]);
 
   const onSubmit = (data: any) => {
-    if (!store.cohort) return toast.error('Please select a Cohort.');
     const teacherEl = document.getElementById('teacherDpp') as HTMLSelectElement;
-    if (!teacherEl || !teacherEl.value) return toast.error('Please select a Teacher / Mentor.');
-    if (reqCentre && !store.centre) return toast.error('Please select a Centre Name for Qatar Offline.');
-    if (store.selectedBatches.size === 0) return toast.error('Please select at least one Batch.');
-
-    mutation.mutate(
-      {
-        endpoint: '/dpp',
-        payload: {
-          cohort: store.cohort,
-          branch: reqCentre ? store.centre : '',
-          teacher: teacherEl.value,
-          batchesList: Array.from(store.selectedBatches).join(', '),
-          subject: data.subject,
-          entries: data.entries 
-        }
-      },
-      {
-        onSuccess: () => {
-          reset({ entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null }] });
-          store.resetFormState();
-          if (teacherEl) teacherEl.value = '';
-        }
-      }
-    );
+    if (!store.cohort || !teacherEl?.value || store.selectedBatches.size === 0) return toast.error('Please fill required fields.');
+    mutation.mutate({ endpoint: '/dpp', payload: { cohort: store.cohort, branch: reqCentre ? store.centre : '', teacher: teacherEl.value, batchesList: Array.from(store.selectedBatches).join(', '), subject: data.subject, entries: data.entries } }, { onSuccess: () => { reset({ entries: [{ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: null }] }); store.resetFormState(); if (teacherEl) teacherEl.value = ''; const fileInputs = document.querySelectorAll('input[type="file"]'); fileInputs.forEach((input: any) => input.value = ''); } });
   };
 
   return (
     <div className="animate-fade-in">
-      <header className="mb-8 md:mb-10">
-        <button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-bold transition-colors mb-6">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </button>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100/80 border border-indigo-200 text-indigo-800 text-xs font-bold uppercase tracking-wider mb-3 ml-4">
-          <FileText className="w-3.5 h-3.5" /> DPP Module
-        </div>
-        <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight">DPP Form</h1>
-        <p className="text-slate-500 text-sm font-medium mt-1.5">Submit homework and practice problems. Attach your files directly into the form!</p>
-      </header>
-
+      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button><h1 className="text-3xl font-black">DPP Form</h1></header>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        {/* MASTER INFORMATION */}
-        <Card className="border-indigo-100 shadow-indigo-900/5">
-          <div className="border-b border-slate-100 pb-4 mb-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-indigo-500"/> Master Information</h3>
-          </div>
-          
+        <Card>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <div className="w-full">
-              <Label required helper="Filters mentor list">Cohort</Label>
-              <Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} disabled={isLoading || mutation.isPending} required>
-                <option value="" disabled>Select a Cohort...</option>
-                {initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </div>
-            <div className="w-full">
-              <Label required helper="Auto-mapped to cohort">Teacher / Mentor</Label>
-              <Select id="teacherDpp" disabled={!store.cohort || isLoading || mutation.isPending} defaultValue="" required>
-                <option value="" disabled>Waiting for Cohort...</option>
-                {teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}
-              </Select>
-            </div>
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Teacher</Label><Select id="teacherDpp" disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
           </div>
-
-          {reqCentre && (
-            <div className="grid grid-cols-1 gap-6 mb-6">
-              <div className="w-full">
-                <Label required helper="Strictly required for Qatar Offline">Centre Name (Branch)</Label>
-                <Select value={store.centre} onChange={(e: any) => store.setCentre(e.target.value)} disabled={mutation.isPending} required>
-                  <option value="" disabled>Select Centre...</option>
-                  {centres.map((c: string) => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </div>
-            </div>
-          )}
-
+          {reqCentre && <div className="mb-6"><Label required>Centre</Label><Select value={store.centre} onChange={(e:any) => store.setCentre(e.target.value)} required><option value="" disabled>Select...</option>{centres.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="w-full">
-              <Label required helper="Multi-select support">Batch</Label>
-              <MultiSelect
-                items={batches}
-                selectedItems={store.selectedBatches}
-                itemKey={(b: string) => b}
-                renderItem={(b: string) => <span className="font-bold text-slate-700">{b}</span>}
-                onToggle={store.toggleBatch}
-                onSelectAll={() => store.selectAllBatches(batches)}
-                onClearAll={store.clearAllBatches}
-                placeholder={!store.cohort ? "Select Cohort first..." : batches.length === 0 ? "No batches available" : "Search & select batches..."}
-                disabled={batches.length === 0 || mutation.isPending}
-              />
-            </div>
-            <div className="w-full">
-              <Label required helper="Curriculum subject">Subject</Label>
-              <Select {...register('subject')} disabled={mutation.isPending} defaultValue="" required>
-                <option value="" disabled>Select Subject...</option>
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Maths">Maths</option>
-                <option value="Biology">Biology</option>
-                <option value="Social Science">Social Science</option>
-                <option value="Science(Combined)">Science(Combined)</option>
-              </Select>
-            </div>
+            <div><Label required>Batches</Label><MultiSelect items={batches} selectedItems={store.selectedBatches} itemKey={(b:string)=>b} renderItem={(b:string)=><span className="font-bold">{b}</span>} onToggle={store.toggleBatch} onSelectAll={()=>store.selectAllBatches(batches)} onClearAll={store.clearAllBatches} placeholder="Search batches..." disabled={batches.length===0} /></div>
+            <div><Label required>Subject</Label><Select {...register('subject')} defaultValue="" required><option value="" disabled>Select...</option><option value="Physics">Physics</option><option value="Chemistry">Chemistry</option><option value="Maths">Maths</option><option value="Biology">Biology</option><option value="Social Science">Social Science</option><option value="Science(Combined)">Science(Combined)</option></Select></div>
           </div>
         </Card>
-
-        {/* DYNAMIC ENTRIES WITH FILE UPLOADER */}
+        
         <div className="space-y-6">
-          <div className="flex items-center justify-between px-2">
-            <h3 className="font-black text-slate-800 text-lg">Daily Entries</h3>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{fields.length} {fields.length === 1 ? 'Entry' : 'Entries'}</span>
-          </div>
-          
           {fields.map((item, index) => (
-            <Card key={item.id} className="relative border-l-4 border-l-indigo-500 animate-fade-in shadow-md">
-              
-              {fields.length > 1 && (
-                <button type="button" onClick={() => remove(index)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-              
-              <div className="mb-4">
-                <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-600 font-bold text-xs rounded-md">Entry #{index + 1}</span>
-              </div>
-
+            <Card key={item.id} className="relative border-l-4 border-l-indigo-500">
+              {fields.length > 1 && <button type="button" onClick={() => remove(index)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                <div className="w-full">
-                  <Label required helper="Date of the homework">Date of DPP</Label>
-                  <Input type="date" {...register(`entries.${index}.date`)} required disabled={mutation.isPending} />
-                </div>
-                <div className="w-full">
-                  <Label required helper="Specific topic assigned">Home Work Topic</Label>
-                  <Input {...register(`entries.${index}.topic`)} placeholder="E.g., Kinematics Formulas" required disabled={mutation.isPending} />
-                </div>
+                <div><Label required>Date of DPP</Label><Input type="date" {...register(`entries.${index}.date`)} required /></div>
+                <div><Label required>Home Work Topic</Label><Input {...register(`entries.${index}.topic`)} required /></div>
               </div>
-
-              <div className="grid grid-cols-1 gap-6 mb-6">
-                <div className="w-full">
-                  <Label helper="Optional instructions">Additional Notes</Label>
-                  <textarea
-                    {...register(`entries.${index}.notes`)}
-                    className="w-full p-4 bg-white/90 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium transition-all duration-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/10"
-                    rows={2}
-                    placeholder="Any specific instructions for this homework?"
-                    disabled={mutation.isPending} 
-                  />
-                </div>
-              </div>
-
-              {/* NATIVE FILE UPLOADER BUTTON */}
-              <div className="grid grid-cols-1 gap-6">
-                <div className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200">
-                  <Label helper="Upload PDF, Image, or Doc (Max 3.5 MB)">Upload Attachment</Label>
-                  <div className="mt-1 flex items-center gap-3">
-                    <input 
-                      type="file" 
-                      onChange={(e) => handleFileChange(index, e)} 
-                      disabled={mutation.isPending}
-                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 transition-all cursor-pointer shadow-sm"
-                    />
-                  </div>
-                  {watch(`entries.${index}.attachmentData`) && (
-                    <p className="text-xs text-emerald-600 font-bold mt-2 flex items-center gap-1.5">
-                      <Paperclip className="w-3.5 h-3.5" /> Attached: {watch(`entries.${index}.attachmentData.fileName`)}
-                    </p>
-                  )}
-                </div>
+              <div className="mb-6"><Label>Additional Notes</Label><textarea {...register(`entries.${index}.notes`)} className="w-full p-4 border rounded-xl" rows={2}/></div>
+              <div className="p-5 bg-slate-50 border rounded-xl"><Label>Upload File (Max 3MB)</Label>
+                <input type="file" className="mt-2 w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-indigo-100 file:text-indigo-700"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) { setValue(`entries.${index}.attachment`, null); return; }
+                    if (file.size > 3*1024*1024) { toast.error("File is too large!"); e.target.value = ''; setValue(`entries.${index}.attachment`, null); return; }
+                    const reader = new FileReader(); reader.onload = () => { setValue(`entries.${index}.attachment`, { name: file.name, type: file.type, data: (reader.result as string).split(',')[1] }); }; reader.readAsDataURL(file);
+                  }}/>
               </div>
             </Card>
           ))}
         </div>
-
-        {/* BOTTOM ACTION BUTTONS */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-200/60">
-          <button 
-            type="button" 
-            onClick={() => append({ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachmentData: null })}
-            disabled={mutation.isPending}
-            className="flex items-center justify-center gap-2 px-6 py-3.5 bg-white border-2 border-dashed border-indigo-300 text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 hover:border-indigo-500 w-full md:w-auto transition-all"
-          >
-            <Plus className="w-5 h-5" /> Add Another Day / Entry
-          </button>
-
-          <Button type="submit" isLoading={mutation.isPending} className="w-full md:w-auto md:min-w-[280px] bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 py-3.5">
-            <Save className="w-5 h-5 stroke-[2.5]" /> Submit All DPP Entries
-          </Button>
+        <div className="flex justify-between gap-4">
+          <button type="button" onClick={() => append({ date: new Date().toISOString().split('T')[0], topic: '', notes: '', attachment: null })} className="px-6 py-3 border-2 border-dashed text-indigo-700 font-bold rounded-xl w-full">Add Another Day</button>
+          <Button type="submit" isLoading={mutation.isPending} className="w-full">Submit All</Button>
         </div>
-
       </form>
     </div>
   );
 }
 
+// ==========================================
+// 3. FACULTY LEAVE FORM
+// ==========================================
+function LeaveForm({ initData, isLoading, mutation }: any) {
+  const store = useSessionStore();
+  const setView = useSessionStore(state => state.setCurrentView);
+  const { register, handleSubmit, watch, reset, setValue } = useForm<any>({ defaultValues: { fromDate: '', toDate: '', days: 0 } });
+
+  const fromD = watch('fromDate');
+  const toD = watch('toDate');
+
+  useEffect(() => {
+    if (fromD && toD) {
+      const start = new Date(fromD);
+      const end = new Date(toD);
+      if (end >= start) {
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
+        setValue('days', diffDays);
+      } else {
+        setValue('days', 0);
+      }
+    }
+  }, [fromD, toD, setValue]);
+
+  const reqClusterHead = store.cohort === 'UAE Offline' || store.cohort === 'Saudi Offline';
+  const clusterHeads = store.cohort === 'UAE Offline' 
+    ? ['Saqib Nazir', 'Vaibhav Jain', 'Atul kumar Jha', 'Md.Irfanul Haque']
+    : store.cohort === 'Saudi Offline' ? ['Fahad Jamal', 'Purbayan Paul'] : [];
+
+  const teachers = useMemo(() => { if (!initData?.teachers || !store.cohort) return []; return Array.from(new Set<string>(initData.teachers.filter((t: any) => t.cohort === store.cohort).map((t: any) => t.name))).sort(); }, [initData, store.cohort]);
+
+  const onSubmit = (data: any) => {
+    if (data.days <= 0) return toast.error('Invalid Date Range');
+    mutation.mutate({ endpoint: '/leave', payload: { ...data, cohort: store.cohort } }, { onSuccess: () => { reset(); store.resetFormState(); setView('dashboard'); } });
+  };
+
+  return (
+    <div className="animate-fade-in">
+      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button><h1 className="text-3xl font-black text-emerald-900">Faculty Leave Form</h1></header>
+      <Card className="border-emerald-100">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 bg-emerald-50/40 rounded-xl">
+            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e:any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
+            <div><Label required>Teacher Name</Label><Select {...register('teacher')} disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
+          </div>
+          {reqClusterHead && <div className="p-5 bg-slate-50 rounded-xl"><Label required>Cluster Head</Label><Select {...register('clusterHead')} defaultValue="" required><option value="" disabled>Select Head...</option>{clusterHeads.map(c => <option key={c} value={c}>{c}</option>)}</Select></div>}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div><Label required>Leave From Date</Label><Input type="date" {...register('fromDate')} required /></div>
+            <div><Label required>Leave To Date</Label><Input type="date" {...register('toDate')} required /></div>
+            <div><Label>No of Days (Calculated)</Label><Input type="number" {...register('days')} disabled className="bg-slate-100 font-bold text-center" /></div>
+          </div>
+          <div className="grid grid-cols-1 gap-6">
+            <div><Label required>Reason For Leave</Label><Select {...register('reason')} defaultValue="" required><option value="" disabled>Select Reason...</option><option value="Sick Leave">Sick Leave</option><option value="Emergency Leave">Emergency Leave</option><option value="Personal Reasons">Personal Reasons</option><option value="Other Reasons">Other Reasons</option></Select></div>
+            <div><Label required>Comments</Label><textarea {...register('comments')} className="w-full p-4 border rounded-xl" rows={3} required placeholder="Provide detail..." /></div>
+          </div>
+          <Button type="submit" isLoading={mutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">Submit Leave Request</Button>
+        </form>
+      </Card>
+    </div>
+  );
+}
 
 // ==========================================
-// MAIN APP COMPONENT
+// 4. CENTRAL DASHBOARD
+// ==========================================
+function Dashboard() {
+  const setView = useSessionStore(state => state.setCurrentView);
+  const { data: leavesData, isLoading } = useQuery({ queryKey: ['leaves'], queryFn: async () => { const res = await apiClient.get('/leaves'); return res.data.leaves; }, refetchInterval: 10000 });
+
+  return (
+    <div className="animate-fade-in">
+      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Module Selection</button><h1 className="text-3xl font-black">Central Leave Dashboard</h1></header>
+      <Card>
+        {isLoading ? (
+          <div className="p-10 text-center"><Clock className="w-8 h-8 mx-auto animate-spin text-slate-400 mb-4"/> Loading records...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                <tr><th className="px-6 py-3">Timestamp</th><th className="px-6 py-3">Teacher</th><th className="px-6 py-3">Dates</th><th className="px-6 py-3">Days</th><th className="px-6 py-3">Reason</th><th className="px-6 py-3">Status</th></tr>
+              </thead>
+              <tbody>
+                {leavesData?.map((l: any) => (
+                  <tr key={l.id} className="bg-white border-b hover:bg-slate-50">
+                    <td className="px-6 py-4">{l.timestamp}</td>
+                    <td className="px-6 py-4 font-bold">{l.teacher} <span className="block text-xs font-normal text-slate-400">{l.cohort}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap">{l.fromDate} <br/>to {l.toDate}</td>
+                    <td className="px-6 py-4 text-center font-bold">{l.days}</td>
+                    <td className="px-6 py-4">{l.reason}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${l.status === 'Approve' ? 'bg-green-100 text-green-800' : l.status === 'Reject' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{l.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ==========================================
+// MAIN APP ENTRY
 // ==========================================
 function MainApplication() {
   const currentView = useSessionStore(state => state.currentView);
-  
-  const { data: initData, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['init'],
-    queryFn: async () => {
-      const res = await apiClient.get('/init');
-      return res.data;
-    },
-    refetchOnWindowFocus: false,
-    retry: 1
-  });
-
+  const { data: initData, isLoading, isError, error, refetch } = useQuery({ queryKey: ['init'], queryFn: async () => { const res = await apiClient.get('/init'); return res.data; }, refetchOnWindowFocus: false, retry: 1 });
   const mutation = useMutation({
-    mutationFn: async ({ endpoint, payload }: { endpoint: string, payload: any }) => {
-      return await apiClient.post(endpoint, payload);
-    },
-    onSuccess: (data) => {
-      toast.success(data.data.message || 'Successfully recorded!', {
-        icon: '🎉',
-        style: { borderRadius: '12px', background: '#0f172a', color: '#fff', fontSize: '13px', fontWeight: '600' }
-      });
-    },
-    onError: (err: any) => {
-      const msg = err.response?.data?.message || err.message || 'Server connection failed.';
-      toast.error(`Error: ${msg}`, { style: { borderRadius: '12px', background: '#dc2626', color: '#fff', fontSize: '13px' } });
-    }
+    mutationFn: async ({ endpoint, payload }: any) => await apiClient.post(endpoint, payload),
+    onSuccess: (data) => toast.success(data.data.message || 'Success!'),
+    onError: (err: any) => toast.error(`Error: ${err.response?.data?.message || err.message}`)
   });
 
   return (
     <>
-      <GlobalLoader active={isLoading || mutation.isPending} message={mutation.isPending ? "Uploading file & logging to Google Sheets..." : "Loading PW Gulf environment..."} />
-      
+      <GlobalLoader active={isLoading || mutation.isPending} message={mutation.isPending ? "Processing..." : "Loading PW Gulf environment..."} />
       <div className="flex flex-col md:flex-row min-h-screen bg-slate-100/60 text-slate-800 font-sans">
-        <aside className="w-full md:w-[300px] p-6 md:p-8 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-10 shrink-0">
+        <aside className="w-full md:w-[280px] p-6 bg-slate-900 text-white flex flex-col justify-between shrink-0">
           <div>
-            <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-slate-800">
-              <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/30">
-                <GraduationCap className="w-7 h-7 text-white stroke-[2.2]" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-1.5">
-                  PW Gulf <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" />
-                </h2>
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Faculty Portal</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur">
-                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> System Status
-                </h4>
-                <p className={`text-sm font-bold ${mutation.isPending ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
-                  {mutation.isPending ? 'Writing to Database...' : 'Ready to Submit'}
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur">
-                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-blue-400" /> Active Environment
-                </h4>
-                <p className="text-sm font-bold text-slate-200">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-              </div>
+            <div className="flex items-center gap-3 mb-10 pb-6 border-b border-slate-800">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl"><GraduationCap className="w-6 h-6 text-white stroke-[2]" /></div>
+              <div><h2 className="text-lg font-black flex items-center gap-1">PW Gulf <Sparkles className="w-3 h-3 text-amber-400" /></h2><p className="text-[10px] text-slate-400 uppercase">Faculty Portal</p></div>
             </div>
           </div>
         </aside>
-        
-        <main className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full overflow-y-auto">
-          {isError ? (
-            <ErrorBanner message={`Cannot reach backend server (${error?.message || 'Network Error'}). Ensure backend is running.`} onRetry={() => refetch()} />
-          ) : (
+        <main className="flex-1 p-6 md:p-12 w-full overflow-y-auto">
+          {isError ? <ErrorBanner message="Network Error." onRetry={()=>refetch()} /> : (
             <>
               {currentView === 'home' && <HomeDashboard />}
               {currentView === 'session' && <ExtraClassForm initData={initData} isLoading={isLoading} mutation={mutation} />}
               {currentView === 'dpp' && <DPPForm initData={initData} isLoading={isLoading} mutation={mutation} />}
+              {currentView === 'leave' && <LeaveForm initData={initData} isLoading={isLoading} mutation={mutation} />}
+              {currentView === 'dashboard' && <Dashboard />}
             </>
           )}
         </main>
@@ -734,11 +379,4 @@ function MainApplication() {
   );
 }
 
-export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <MainApplication />
-      <Toaster position="bottom-right" />
-    </QueryClientProvider>
-  );
-}
+export default function App() { return <QueryClientProvider client={queryClient}><MainApplication /><Toaster position="bottom-right" /></QueryClientProvider>; }
