@@ -294,7 +294,7 @@ function LeaveForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 4. CENTRAL LEAVE DASHBOARD (Fixed Types)
+// 4. CENTRAL LEAVE DASHBOARD 
 // ==========================================
 function LeaveDashboard() {
   const store = useSessionStore();
@@ -375,7 +375,9 @@ function LeaveDashboard() {
           <p className="text-slate-500 text-sm font-medium mt-1">Logged in as: <strong className="text-slate-800">{user.username}</strong> ({user.role})</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => store.setCurrentView('leave')} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-800 font-bold rounded-lg hover:bg-emerald-200"><Plus className="w-4 h-4"/> Apply Leave</button>
+          {user?.role !== 'Admin' && (
+             <button onClick={() => store.setCurrentView('leave')} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-800 font-bold rounded-lg hover:bg-emerald-200"><Plus className="w-4 h-4"/> Apply Leave</button>
+          )}
           <button onClick={() => store.setCurrentUser(null)} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100"><LogOut className="w-4 h-4"/> Logout</button>
         </div>
       </header>

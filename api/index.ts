@@ -208,21 +208,51 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       const approveUrl = `${APP_URL}/api/leave/action?id=${leaveId}&action=Approve`;
       const rejectUrl = `${APP_URL}/api/leave/action?id=${leaveId}&action=Reject`;
       
+      const emailHtml = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
+        <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 0.5px;">PW Gulf System</h2>
+          <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Leave Request Pending</p>
+        </div>
+        <div style="background-color: #ffffff; padding: 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <p style="color: #334155; font-size: 16px; margin-top: 0;">A new leave request requires your attention.</p>
+          
+          <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px; width: 120px;"><strong>Faculty</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px; font-weight: 600;">${data.teacher} <span style="color: #64748b; font-weight: 400; font-size: 13px;">(${data.cohort})</span></td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;"><strong>Cluster Head</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px;">${data.clusterHead || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;"><strong>Dates</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px;">${data.fromDate} <span style="color: #94a3b8;">to</span> ${data.toDate} <br/><span style="display: inline-block; margin-top: 4px; padding: 4px 8px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-size: 12px; font-weight: bold;">${data.days} Day(s)</span></td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;"><strong>Reason</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px;">${data.reason}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; color: #64748b; font-size: 14px; vertical-align: top;"><strong>Comments</strong></td>
+              <td style="padding: 12px; color: #475569; font-size: 14px; background: #f8fafc; border-radius: 8px; font-style: italic;">"${data.comments}"</td>
+            </tr>
+          </table>
+
+          <div style="text-align: center; margin-top: 32px;">
+            <a href="${approveUrl}" style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 0 8px 12px 8px; border: 1px solid #059669;">Approve Leave</a>
+            <a href="${rejectUrl}" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 0 8px 12px 8px; border: 1px solid #dc2626;">Reject Leave</a>
+          </div>
+        </div>
+      </div>
+      `;
+
       await transporter.sendMail({
         from: `"PW Gulf System" <${process.env.EMAIL_USER}>`,
         to: 'rohit.kumar30@pw.live', 
         subject: `[LEAVE REQUEST] ${data.teacher} - ${data.days} Day(s)`,
-        html: `
-          <h3>New Leave Request</h3>
-          <p><strong>Teacher:</strong> ${data.teacher} (${data.cohort})</p>
-          <p><strong>Cluster Head:</strong> ${data.clusterHead || 'N/A'}</p>
-          <p><strong>Dates:</strong> ${data.fromDate} to ${data.toDate} (${data.days} days)</p>
-          <p><strong>Reason:</strong> ${data.reason}</p>
-          <p><strong>Comments:</strong> ${data.comments}</p>
-          <br/>
-          <a href="${approveUrl}" style="padding:10px 20px; background:green; color:white; text-decoration:none; border-radius:5px; margin-right:10px;">Approve Leave</a>
-          <a href="${rejectUrl}" style="padding:10px 20px; background:red; color:white; text-decoration:none; border-radius:5px;">Reject Leave</a>
-        `
+        html: emailHtml
       });
     }
 
@@ -250,13 +280,32 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       requestBody: { values: [[action]] }
     });
 
-    // Send confirmation to the testing email
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const isApproved = action === 'Approve';
+      const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
+      const colorText = isApproved ? '#065f46' : '#991b1b';
+      
+      const emailHtml = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
+        <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 0.5px;">PW Gulf HR</h2>
+        </div>
+        <div style="background-color: #ffffff; padding: 40px 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); text-align: center;">
+          <p style="color: #64748b; font-size: 16px; margin: 0 0 8px 0;">Hello <strong style="color: #0f172a;">${teacherName}</strong>,</p>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 24px 0;">Your recent leave request has been processed.</p>
+          <span style="display: inline-block; padding: 12px 32px; background-color: ${colorBg}; color: ${colorText}; border-radius: 999px; font-size: 18px; font-weight: bold; letter-spacing: 0.5px;">
+            ${action}d
+          </span>
+          <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">If you have any questions, please contact your Cluster Head or HR.</p>
+        </div>
+      </div>
+      `;
+
       await transporter.sendMail({
         from: `"PW Gulf HR" <${process.env.EMAIL_USER}>`,
         to: 'thisisrohithere@gmail.com', 
         subject: `Leave Request ${action}d`,
-        html: `<h3>Leave Request Update</h3><p>Hello ${teacherName},</p><p>Your leave request has been <strong>${action}d</strong> by HR.</p>`
+        html: emailHtml
       });
     }
 
@@ -284,15 +333,40 @@ app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Respon
     });
 
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const isApproved = action === 'Approve';
+      const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
+      const colorText = isApproved ? '#065f46' : '#991b1b';
+
+      const emailHtml = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
+        <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 0.5px;">PW Gulf HR</h2>
+        </div>
+        <div style="background-color: #ffffff; padding: 40px 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); text-align: center;">
+          <p style="color: #64748b; font-size: 16px; margin: 0 0 8px 0;">Hello <strong style="color: #0f172a;">${teacherName}</strong>,</p>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 24px 0;">Your recent leave request has been processed.</p>
+          <span style="display: inline-block; padding: 12px 32px; background-color: ${colorBg}; color: ${colorText}; border-radius: 999px; font-size: 18px; font-weight: bold; letter-spacing: 0.5px;">
+            ${action}d
+          </span>
+          <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">If you have any questions, please contact your Cluster Head or HR.</p>
+        </div>
+      </div>
+      `;
+
       await transporter.sendMail({
         from: `"PW Gulf HR" <${process.env.EMAIL_USER}>`,
         to: 'thisisrohithere@gmail.com', 
         subject: `Leave Request ${action}d`,
-        html: `<h3>Leave Request Update</h3><p>Hello ${teacherName},</p><p>Your leave request has been <strong>${action}d</strong> by HR.</p>`
+        html: emailHtml
       });
     }
 
-    res.send(`<h1>Successfully ${action}d leave for ${teacherName}.</h1><p>You may close this window.</p>`);
+    res.send(`
+      <div style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+        <h1 style="color: #0f172a;">Successfully ${action}d leave for ${teacherName}.</h1>
+        <p style="color: #64748b;">The Google Sheet has been updated. You may close this window.</p>
+      </div>
+    `);
   } catch (e: any) { res.status(500).send("Error updating leave."); }
 });
 
