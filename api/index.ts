@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { PassThrough } from 'stream';
 import nodemailer from 'nodemailer';
-import crypto from 'crypto'; // For generating unique IDs
+import crypto from 'crypto';
 
 dotenv.config();
 const app = express();
@@ -26,15 +26,11 @@ const getAuth = () => {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = '1W5DOjAp3tI2aMBzKpSZ_n5C5g9xs9NE4'; 
-const APP_URL = 'https://doubt-solving-form.vercel.app'; // Your Vercel URL
+const APP_URL = 'https://doubt-solving-form.vercel.app'; 
 
-// --- EMAIL TRANSPORTER ---
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER, 
-    pass: process.env.EMAIL_PASS
-  }
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
 });
 
 let cachedInitData: any = null;
@@ -155,7 +151,28 @@ app.post(['/api/dpp', '/dpp'], async (req: Request, res: Response) => {
 // NEW LEAVE MANAGEMENT SYSTEM
 // ==========================================
 
-// Fetch Leaves for Dashboard
+// Login Route
+app.post(['/api/login', '/login'], async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
+    const sheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Login Credentials!A2:B' });
+    const rows = sheetData.data.values || [];
+    
+    const user = rows.find(r => r[0]?.toString().trim().toLowerCase() === username.toLowerCase() && r[1] === password);
+    
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+    const actualName = user[0].toString().trim();
+    let role = 'Faculty';
+    if (actualName.toLowerCase() === 'tannu verma') role = 'HR';
+    if (actualName.toLowerCase() === 'admin') role = 'Admin';
+
+    res.json({ success: true, user: { username: actualName, role } });
+  } catch (e: any) { res.status(500).json({ message: e.message }); }
+});
+
+// Fetch Leaves
 app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -165,13 +182,13 @@ app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
     const leaves = rows.map(r => ({
       id: r[0], timestamp: r[1], cohort: r[2], clusterHead: r[3], teacher: r[4], 
       fromDate: r[5], toDate: r[6], days: r[7], reason: r[8], comments: r[9], status: r[10]
-    })).reverse(); // Newest first
+    })).reverse(); 
 
     res.json({ leaves });
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
-// Submit Leave Request
+// Submit Leave
 app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -187,14 +204,13 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K', valueInputOption: 'USER_ENTERED', requestBody: { values: [newRow] }
     });
 
-    // Send Mail to Approver
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       const approveUrl = `${APP_URL}/api/leave/action?id=${leaveId}&action=Approve`;
       const rejectUrl = `${APP_URL}/api/leave/action?id=${leaveId}&action=Reject`;
       
       await transporter.sendMail({
         from: `"PW Gulf System" <${process.env.EMAIL_USER}>`,
-        to: 'rohit.kumar30@pw.live', // Hardcoded Approver
+        to: 'rohit.kumar30@pw.live', 
         subject: `[LEAVE REQUEST] ${data.teacher} - ${data.days} Day(s)`,
         html: `
           <h3>New Leave Request</h3>
@@ -214,7 +230,41 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: "Google API Error: " + e.message }); }
 });
 
-// Leave Action Endpoint (Triggered by Email Buttons)
+// HR Dashboard AJAX Update Route
+app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Response) => {
+  try {
+    const { id, action } = req.body;
+    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
+    const sheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K' });
+    const rows = sheetData.data.values || [];
+    
+    const rowIndex = rows.findIndex(row => row[0] === id);
+    if (rowIndex === -1) return res.status(404).json({ message: 'Leave request not found.' });
+
+    const teacherName = rows[rowIndex][4];
+    
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `Leave Requests!K${rowIndex + 1}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[action]] }
+    });
+
+    // Send confirmation to the testing email
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      await transporter.sendMail({
+        from: `"PW Gulf HR" <${process.env.EMAIL_USER}>`,
+        to: 'thisisrohithere@gmail.com', 
+        subject: `Leave Request ${action}d`,
+        html: `<h3>Leave Request Update</h3><p>Hello ${teacherName},</p><p>Your leave request has been <strong>${action}d</strong> by HR.</p>`
+      });
+    }
+
+    res.json({ success: true, message: `Leave ${action}d successfully.` });
+  } catch (e: any) { res.status(500).json({ message: "Error updating leave." }); }
+});
+
+// Old GET route to support clicking buttons inside emails directly
 app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Response) => {
   try {
     const { id, action } = req.query;
@@ -224,26 +274,20 @@ app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Respon
     const sheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K' });
     const rows = sheetData.data.values || [];
     
-    // Find the row with the matching ID
     const rowIndex = rows.findIndex(row => row[0] === id);
     if (rowIndex === -1) return res.send('Leave request not found.');
 
     const teacherName = rows[rowIndex][4];
     
-    // Update the status column (Column K, index 10)
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `Leave Requests!K${rowIndex + 1}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[action]] }
+      spreadsheetId: SPREADSHEET_ID, range: `Leave Requests!K${rowIndex + 1}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[action]] }
     });
 
-    // Send confirmation email to Teacher (Testing Mode)
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       await transporter.sendMail({
         from: `"PW Gulf HR" <${process.env.EMAIL_USER}>`,
-        to: 'thisisrohithere@gmail.com', // Hardcoded Faculty Test Email
-        subject: `Leave Request ${action}D`,
+        to: 'thisisrohithere@gmail.com', 
+        subject: `Leave Request ${action}d`,
         html: `<h3>Leave Request Update</h3><p>Hello ${teacherName},</p><p>Your leave request has been <strong>${action}d</strong> by HR.</p>`
       });
     }

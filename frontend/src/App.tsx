@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
 import { 
   GraduationCap, Save, Sparkles, Building2, Calendar, CheckCircle2, 
-  ArrowLeft, FileText, Users, Plus, Trash2, Palmtree, LayoutDashboard, Clock 
+  ArrowLeft, FileText, Users, Plus, Trash2, Palmtree, LayoutDashboard, Clock, LogOut, Check, X
 } from 'lucide-react';
 import { Card, Label, Input, Select, Button, GlobalLoader, MultiSelect, ErrorBanner } from './components';
 
@@ -16,14 +16,18 @@ const queryClient = new QueryClient();
 // ==========================================
 // ZUSTAND GLOBAL STATE
 // ==========================================
+interface UserData { username: string; role: 'Faculty' | 'HR' | 'Admin'; }
+
 interface SessionStore {
   currentView: 'home' | 'session' | 'dpp' | 'leave' | 'dashboard';
+  currentUser: UserData | null;
   cohort: string;
   centre: string;
   sessionType: string;
   selectedBatches: Set<string>;
   selectedStudents: Map<string, any>;
   setCurrentView: (v: 'home' | 'session' | 'dpp' | 'leave' | 'dashboard') => void;
+  setCurrentUser: (user: UserData | null) => void;
   setCohort: (c: string) => void;
   setCentre: (c: string) => void;
   setSessionType: (t: string) => void;
@@ -37,8 +41,9 @@ interface SessionStore {
 }
 
 const useSessionStore = create<SessionStore>((set) => ({
-  currentView: 'home', cohort: '', centre: '', sessionType: '', selectedBatches: new Set<string>(), selectedStudents: new Map<string, any>(),
+  currentView: 'home', currentUser: null, cohort: '', centre: '', sessionType: '', selectedBatches: new Set<string>(), selectedStudents: new Map<string, any>(),
   setCurrentView: (view) => set({ currentView: view }),
+  setCurrentUser: (user) => set({ currentUser: user }),
   setCohort: (cohort) => set({ cohort, centre: '', selectedBatches: new Set(), selectedStudents: new Map() }),
   setCentre: (centre) => set({ centre, selectedBatches: new Set(), selectedStudents: new Map() }),
   setSessionType: (sessionType) => set({ sessionType, selectedStudents: new Map() }),
@@ -102,8 +107,8 @@ function HomeDashboard() {
         <button onClick={() => navigateTo('dashboard')} className="group text-left p-8 rounded-3xl bg-white border border-slate-200 shadow-lg hover:shadow-2xl hover:border-slate-800 transition-all duration-300 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><LayoutDashboard className="w-32 h-32 text-slate-800" /></div>
           <div className="w-14 h-14 bg-slate-200 rounded-2xl flex items-center justify-center mb-6"><LayoutDashboard className="w-7 h-7 text-slate-800" /></div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Central Dashboard</h2>
-          <p className="text-slate-500 font-medium">View all leave requests, track approvals, and manage workflow.</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Leave Dashboard</h2>
+          <p className="text-slate-500 font-medium">Login to view all leave requests, track approvals, and manage workflow.</p>
         </button>
       </div>
     </div>
@@ -111,7 +116,7 @@ function HomeDashboard() {
 }
 
 // ==========================================
-// 1. EXTRA CLASS SESSION FORM
+// 1. EXTRA CLASS SESSION FORM (Unchanged)
 // ==========================================
 function ExtraClassForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
@@ -170,7 +175,7 @@ function ExtraClassForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 2. DPP FORM
+// 2. DPP FORM (Unchanged)
 // ==========================================
 function DPPForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
@@ -236,35 +241,25 @@ function DPPForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 3. FACULTY LEAVE FORM
+// 3. FACULTY LEAVE FORM (Unchanged)
 // ==========================================
 function LeaveForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
   const setView = useSessionStore(state => state.setCurrentView);
   const { register, handleSubmit, watch, reset, setValue } = useForm<any>({ defaultValues: { fromDate: '', toDate: '', days: 0 } });
 
-  const fromD = watch('fromDate');
-  const toD = watch('toDate');
+  const fromD = watch('fromDate'); const toD = watch('toDate');
 
   useEffect(() => {
     if (fromD && toD) {
-      const start = new Date(fromD);
-      const end = new Date(toD);
-      if (end >= start) {
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
-        setValue('days', diffDays);
-      } else {
-        setValue('days', 0);
-      }
+      const start = new Date(fromD); const end = new Date(toD);
+      if (end >= start) setValue('days', Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+      else setValue('days', 0);
     }
   }, [fromD, toD, setValue]);
 
   const reqClusterHead = store.cohort === 'UAE Offline' || store.cohort === 'Saudi Offline';
-  const clusterHeads = store.cohort === 'UAE Offline' 
-    ? ['Saqib Nazir', 'Vaibhav Jain', 'Atul kumar Jha', 'Md.Irfanul Haque']
-    : store.cohort === 'Saudi Offline' ? ['Fahad Jamal', 'Purbayan Paul'] : [];
-
+  const clusterHeads = store.cohort === 'UAE Offline' ? ['Saqib Nazir', 'Vaibhav Jain', 'Atul kumar Jha', 'Md.Irfanul Haque'] : store.cohort === 'Saudi Offline' ? ['Fahad Jamal', 'Purbayan Paul'] : [];
   const teachers = useMemo(() => { if (!initData?.teachers || !store.cohort) return []; return Array.from(new Set<string>(initData.teachers.filter((t: any) => t.cohort === store.cohort).map((t: any) => t.name))).sort(); }, [initData, store.cohort]);
 
   const onSubmit = (data: any) => {
@@ -299,35 +294,155 @@ function LeaveForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 4. CENTRAL DASHBOARD
+// 4. CENTRAL LEAVE DASHBOARD (WITH RBAC)
 // ==========================================
-function Dashboard() {
-  const setView = useSessionStore(state => state.setCurrentView);
-  const { data: leavesData, isLoading } = useQuery({ queryKey: ['leaves'], queryFn: async () => { const res = await apiClient.get('/leaves'); return res.data.leaves; }, refetchInterval: 10000 });
+function LeaveDashboard() {
+  const store = useSessionStore();
+  const user = store.currentUser;
+  
+  // Login State
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  
+  // Filters State
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterCohort, setFilterCohort] = useState('');
+  const [filterTeacher, setFilterTeacher] = useState('');
+
+  const { data: leavesData, isLoading, refetch } = useQuery({ queryKey: ['leaves'], queryFn: async () => { const res = await apiClient.get('/leaves'); return res.data.leaves; }, enabled: !!user, refetchInterval: 10000 });
+  const loginMutation = useMutation({ mutationFn: async (payload: any) => await apiClient.post('/login', payload), onSuccess: (res) => { store.setCurrentUser(res.data.user); toast.success(`Welcome, ${res.data.user.role}!`); }, onError: () => toast.error('Invalid Credentials') });
+  const updateLeaveMutation = useMutation({ mutationFn: async (payload: any) => await apiClient.post('/leave/update', payload), onSuccess: () => { toast.success('Status Updated!'); refetch(); }, onError: () => toast.error('Update Failed') });
+
+  const handleLogin = (e: React.FormEvent) => { e.preventDefault(); loginMutation.mutate({ username, password }); };
+
+  // Filter Logic (RBAC Enforced)
+  const filteredLeaves = useMemo(() => {
+    if (!leavesData) return [];
+    let filtered = leavesData;
+
+    // Faculty can ONLY see their own leaves
+    if (user?.role === 'Faculty') {
+      filtered = filtered.filter((l: any) => l.teacher === user.username);
+    } else {
+      if (filterCohort) filtered = filtered.filter((l: any) => l.cohort === filterCohort);
+      if (filterTeacher) filtered = filtered.filter((l: any) => l.teacher === filterTeacher);
+    }
+
+    if (filterStartDate) filtered = filtered.filter((l: any) => new Date(l.fromDate) >= new Date(filterStartDate));
+    if (filterEndDate) filtered = filtered.filter((l: any) => new Date(l.fromDate) <= new Date(filterEndDate));
+
+    return filtered;
+  }, [leavesData, user, filterStartDate, filterEndDate, filterCohort, filterTeacher]);
+
+  const cohortsList = useMemo(() => Array.from(new Set(leavesData?.map((l: any) => l.cohort))).filter(Boolean).sort(), [leavesData]);
+  const teachersList = useMemo(() => Array.from(new Set(leavesData?.map((l: any) => l.teacher))).filter(Boolean).sort(), [leavesData]);
+
+  // KPI Calculations
+  const totalLeaves = filteredLeaves.length;
+  const approvedLeaves = filteredLeaves.filter((l: any) => l.status === 'Approve').length;
+  const rejectedLeaves = filteredLeaves.filter((l: any) => l.status === 'Reject').length;
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto mt-20 animate-fade-in">
+        <header className="mb-6"><button onClick={() => store.setCurrentView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button></header>
+        <Card className="p-8">
+          <div className="text-center mb-6">
+            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4"><LayoutDashboard className="w-6 h-6 text-slate-700"/></div>
+            <h2 className="text-2xl font-black">Dashboard Login</h2>
+            <p className="text-slate-500 text-sm mt-1">Enter your credentials to access records.</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div><Label>User Name (Teacher Name)</Label><Input value={username} onChange={e => setUsername(e.target.value)} required placeholder="e.g. Vishal Vaishnav..." /></div>
+            <div><Label>Password</Label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Enter password" /></div>
+            <Button type="submit" isLoading={loginMutation.isPending} className="w-full mt-4 bg-slate-800 hover:bg-slate-900">Sign In</Button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
-      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Module Selection</button><h1 className="text-3xl font-black">Central Leave Dashboard</h1></header>
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <button onClick={() => store.setCurrentView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-4"><ArrowLeft className="w-4 h-4"/> Home</button>
+          <h1 className="text-3xl font-black">Leave Dashboard</h1>
+          <p className="text-slate-500 text-sm font-medium mt-1">Logged in as: <strong className="text-slate-800">{user.username}</strong> ({user.role})</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => store.setCurrentView('leave')} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-800 font-bold rounded-lg hover:bg-emerald-200"><Plus className="w-4 h-4"/> Apply Leave</button>
+          <button onClick={() => store.setCurrentUser(null)} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100"><LogOut className="w-4 h-4"/> Logout</button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Requests</h3>
+          <p className="text-4xl font-black text-blue-600 mt-2">{totalLeaves}</p>
+        </div>
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Approved</h3>
+          <p className="text-4xl font-black text-emerald-600 mt-2">{approvedLeaves}</p>
+        </div>
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Rejected</h3>
+          <p className="text-4xl font-black text-red-600 mt-2">{rejectedLeaves}</p>
+        </div>
+      </div>
+
+      <Card className="mb-8 p-5 bg-slate-50/50">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div><Label className="text-xs">From Date</Label><Input type="date" value={filterStartDate} onChange={e=>setFilterStartDate(e.target.value)} className="py-2" /></div>
+          <div><Label className="text-xs">To Date</Label><Input type="date" value={filterEndDate} onChange={e=>setFilterEndDate(e.target.value)} className="py-2" /></div>
+          
+          {(user.role === 'HR' || user.role === 'Admin') && (
+            <>
+              <div>
+                <Label className="text-xs">Filter Cohort</Label>
+                <Select value={filterCohort} onChange={(e:any)=>setFilterCohort(e.target.value)} className="py-2"><option value="">All Cohorts</option>{cohortsList.map((c:any) => <option key={c} value={c}>{c}</option>)}</Select>
+              </div>
+              <div>
+                <Label className="text-xs">Filter Faculty</Label>
+                <Select value={filterTeacher} onChange={(e:any)=>setFilterTeacher(e.target.value)} className="py-2"><option value="">All Faculties</option>{teachersList.map((t:any) => <option key={t} value={t}>{t}</option>)}</Select>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+
       <Card>
         {isLoading ? (
           <div className="p-10 text-center"><Clock className="w-8 h-8 mx-auto animate-spin text-slate-400 mb-4"/> Loading records...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-                <tr><th className="px-6 py-3">Timestamp</th><th className="px-6 py-3">Teacher</th><th className="px-6 py-3">Dates</th><th className="px-6 py-3">Days</th><th className="px-6 py-3">Reason</th><th className="px-6 py-3">Status</th></tr>
+              <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                <tr><th className="px-6 py-4">Timestamp</th><th className="px-6 py-4">Teacher</th><th className="px-6 py-4">Dates</th><th className="px-6 py-4">Days</th><th className="px-6 py-4">Reason & Notes</th><th className="px-6 py-4">Status</th>{user.role === 'HR' && <th className="px-6 py-4 text-right">Actions</th>}</tr>
               </thead>
               <tbody>
-                {leavesData?.map((l: any) => (
+                {filteredLeaves.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">No records found.</td></tr>}
+                {filteredLeaves.map((l: any) => (
                   <tr key={l.id} className="bg-white border-b hover:bg-slate-50">
-                    <td className="px-6 py-4">{l.timestamp}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500">{l.timestamp}</td>
                     <td className="px-6 py-4 font-bold">{l.teacher} <span className="block text-xs font-normal text-slate-400">{l.cohort}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap">{l.fromDate} <br/>to {l.toDate}</td>
-                    <td className="px-6 py-4 text-center font-bold">{l.days}</td>
-                    <td className="px-6 py-4">{l.reason}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{l.fromDate} <br/><span className="text-slate-400">to</span> {l.toDate}</td>
+                    <td className="px-6 py-4 text-center font-black">{l.days}</td>
+                    <td className="px-6 py-4 max-w-xs truncate" title={l.comments}><strong className="block">{l.reason}</strong><span className="text-xs text-slate-500">{l.comments}</span></td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${l.status === 'Approve' ? 'bg-green-100 text-green-800' : l.status === 'Reject' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{l.status}</span>
                     </td>
+                    {user.role === 'HR' && (
+                      <td className="px-6 py-4 text-right">
+                        {l.status === 'Pending' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => updateLeaveMutation.mutate({ id: l.id, action: 'Approve' })} disabled={updateLeaveMutation.isPending} className="p-1.5 bg-green-100 text-green-700 hover:bg-green-200 rounded-md transition-colors"><Check className="w-4 h-4"/></button>
+                            <button onClick={() => updateLeaveMutation.mutate({ id: l.id, action: 'Reject' })} disabled={updateLeaveMutation.isPending} className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors"><X className="w-4 h-4"/></button>
+                          </div>
+                        ) : <span className="text-xs text-slate-400 font-medium">Processed</span>}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -344,12 +459,8 @@ function Dashboard() {
 // ==========================================
 function MainApplication() {
   const currentView = useSessionStore(state => state.currentView);
-  const { data: initData, isLoading, isError, error, refetch } = useQuery({ queryKey: ['init'], queryFn: async () => { const res = await apiClient.get('/init'); return res.data; }, refetchOnWindowFocus: false, retry: 1 });
-  const mutation = useMutation({
-    mutationFn: async ({ endpoint, payload }: any) => await apiClient.post(endpoint, payload),
-    onSuccess: (data) => toast.success(data.data.message || 'Success!'),
-    onError: (err: any) => toast.error(`Error: ${err.response?.data?.message || err.message}`)
-  });
+  const { data: initData, isLoading, isError, refetch } = useQuery({ queryKey: ['init'], queryFn: async () => { const res = await apiClient.get('/init'); return res.data; }, refetchOnWindowFocus: false, retry: 1 });
+  const mutation = useMutation({ mutationFn: async ({ endpoint, payload }: any) => await apiClient.post(endpoint, payload), onSuccess: (data) => toast.success(data.data.message || 'Success!'), onError: (err: any) => toast.error(`Error: ${err.response?.data?.message || err.message}`) });
 
   return (
     <>
@@ -370,7 +481,7 @@ function MainApplication() {
               {currentView === 'session' && <ExtraClassForm initData={initData} isLoading={isLoading} mutation={mutation} />}
               {currentView === 'dpp' && <DPPForm initData={initData} isLoading={isLoading} mutation={mutation} />}
               {currentView === 'leave' && <LeaveForm initData={initData} isLoading={isLoading} mutation={mutation} />}
-              {currentView === 'dashboard' && <Dashboard />}
+              {currentView === 'dashboard' && <LeaveDashboard />}
             </>
           )}
         </main>
