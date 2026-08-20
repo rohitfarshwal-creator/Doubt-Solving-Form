@@ -116,7 +116,7 @@ function HomeDashboard() {
 }
 
 // ==========================================
-// 1. EXTRA CLASS SESSION FORM (Unchanged)
+// 1. EXTRA CLASS SESSION FORM 
 // ==========================================
 function ExtraClassForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
@@ -175,7 +175,7 @@ function ExtraClassForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 2. DPP FORM (Unchanged)
+// 2. DPP FORM 
 // ==========================================
 function DPPForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
@@ -241,40 +241,87 @@ function DPPForm({ initData, isLoading, mutation }: any) {
 }
 
 // ==========================================
-// 3. FACULTY LEAVE FORM (Unchanged)
+// 3. FACULTY LEAVE FORM (With Autofill)
 // ==========================================
 function LeaveForm({ initData, isLoading, mutation }: any) {
   const store = useSessionStore();
   const setView = useSessionStore(state => state.setCurrentView);
   const { register, handleSubmit, watch, reset, setValue } = useForm<any>({ defaultValues: { fromDate: '', toDate: '', days: 0 } });
 
-  const fromD = watch('fromDate'); const toD = watch('toDate');
+  const fromD = watch('fromDate'); 
+  const toD = watch('toDate');
 
+  // Calculates Days
   useEffect(() => {
     if (fromD && toD) {
-      const start = new Date(fromD); const end = new Date(toD);
+      const start = new Date(fromD); 
+      const end = new Date(toD);
       if (end >= start) setValue('days', Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
       else setValue('days', 0);
     }
   }, [fromD, toD, setValue]);
+
+  // Autofill Logic: Only runs if they clicked "Apply Leave" from Dashboard and are logged in as Faculty
+  useEffect(() => {
+    if (store.currentUser?.role === 'Faculty' && initData?.teachers) {
+      const matched = initData.teachers.find((t: any) => t.name === store.currentUser!.username);
+      if (matched && store.cohort !== matched.cohort) {
+        store.setCohort(matched.cohort);
+      }
+    }
+  }, [store.currentUser, initData, store.cohort, store.setCohort]);
+
+  useEffect(() => {
+    if (store.currentUser?.role === 'Faculty' && store.cohort) {
+       setValue('teacher', store.currentUser.username);
+    }
+  }, [store.currentUser, store.cohort, setValue]);
 
   const reqClusterHead = store.cohort === 'UAE Offline' || store.cohort === 'Saudi Offline';
   const clusterHeads = store.cohort === 'UAE Offline' ? ['Saqib Nazir', 'Vaibhav Jain', 'Atul kumar Jha', 'Md.Irfanul Haque'] : store.cohort === 'Saudi Offline' ? ['Fahad Jamal', 'Purbayan Paul'] : [];
   const teachers = useMemo(() => { if (!initData?.teachers || !store.cohort) return []; return Array.from(new Set<string>(initData.teachers.filter((t: any) => t.cohort === store.cohort).map((t: any) => t.name))).sort(); }, [initData, store.cohort]);
 
   const onSubmit = (data: any) => {
+    // If disabled via autofill, React Hook Form drops the value, so we forcefully re-inject it here
+    const actualTeacher = store.currentUser?.role === 'Faculty' ? store.currentUser.username : data.teacher;
+    
     if (data.days <= 0) return toast.error('Invalid Date Range');
-    mutation.mutate({ endpoint: '/leave', payload: { ...data, cohort: store.cohort } }, { onSuccess: () => { reset(); store.resetFormState(); setView('dashboard'); } });
+    if (!actualTeacher) return toast.error('Please select a teacher.');
+
+    mutation.mutate({ 
+      endpoint: '/leave', 
+      payload: { ...data, teacher: actualTeacher, cohort: store.cohort } 
+    }, { 
+      onSuccess: () => { 
+        reset(); 
+        store.resetFormState(); 
+        setView('home'); // Now properly redirects to the Home page
+      } 
+    });
   };
+
+  const isFacultyAutofilled = store.currentUser?.role === 'Faculty';
 
   return (
     <div className="animate-fade-in">
-      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button><h1 className="text-3xl font-black text-emerald-900">Faculty Leave Form</h1></header>
+      <header className="mb-10"><button onClick={() => setView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Home</button><h1 className="text-3xl font-black text-emerald-900">Faculty Leave Form</h1></header>
       <Card className="border-emerald-100">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5 bg-emerald-50/40 rounded-xl">
-            <div><Label required>Cohort</Label><Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} required><option value="" disabled>Select...</option>{initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>
-            <div><Label required>Teacher Name</Label><Select {...register('teacher')} disabled={!store.cohort} defaultValue="" required><option value="" disabled>Select...</option>{teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}</Select></div>
+            <div>
+              <Label required>Cohort</Label>
+              <Select value={store.cohort} onChange={(e: any) => store.setCohort(e.target.value)} disabled={isFacultyAutofilled} required>
+                <option value="" disabled>Select...</option>
+                {initData?.cohorts?.map((c: string) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label required>Teacher Name</Label>
+              <Select {...register('teacher')} disabled={isFacultyAutofilled || !store.cohort} defaultValue="" required>
+                <option value="" disabled>Select...</option>
+                {teachers.map((t: string) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </div>
           </div>
           {reqClusterHead && <div className="p-5 bg-slate-50 rounded-xl"><Label required>Cluster Head</Label><Select {...register('clusterHead')} defaultValue="" required><option value="" disabled>Select Head...</option>{clusterHeads.map((c: string) => <option key={c} value={c}>{c}</option>)}</Select></div>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -314,7 +361,6 @@ function LeaveDashboard() {
 
   const handleLogin = (e: React.FormEvent) => { e.preventDefault(); loginMutation.mutate({ username, password }); };
 
-  // Explicitly type the filtered array so TS is happy
   const filteredLeaves = useMemo(() => {
     if (!leavesData) return [];
     let filtered: any[] = leavesData;
@@ -349,7 +395,7 @@ function LeaveDashboard() {
   if (!user) {
     return (
       <div className="max-w-md mx-auto mt-20 animate-fade-in">
-        <header className="mb-6"><button onClick={() => store.setCurrentView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Dashboard</button></header>
+        <header className="mb-6"><button onClick={() => store.setCurrentView('home')} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 text-sm font-bold mb-6"><ArrowLeft className="w-4 h-4"/> Back to Home</button></header>
         <Card className="p-8">
           <div className="text-center mb-6">
             <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4"><LayoutDashboard className="w-6 h-6 text-slate-700"/></div>
@@ -375,6 +421,7 @@ function LeaveDashboard() {
           <p className="text-slate-500 text-sm font-medium mt-1">Logged in as: <strong className="text-slate-800">{user.username}</strong> ({user.role})</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Admin user completely loses the Apply Leave Button */}
           {user?.role !== 'Admin' && (
              <button onClick={() => store.setCurrentView('leave')} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-800 font-bold rounded-lg hover:bg-emerald-200"><Plus className="w-4 h-4"/> Apply Leave</button>
           )}
