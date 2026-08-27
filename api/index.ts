@@ -33,6 +33,29 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
 });
 
+// --- MASTER EMAIL DIRECTORY ---
+const emailDirectory: Record<string, string> = {
+  'Tannu': 'tannu.verma_kp@pw.live',
+  'Shrey': 'shrey.baxi@pw.live',
+  'Sumeet': 'sumeet.prakash@pw.live',
+  'Sohel': 'sohel.shaikh@pw.live',
+  'Ahsan': 'ahsan.khan@pw.live',
+  'Ahad': 'abdul_ahad_kp@pw.live',
+  'Atir': 'atir.husain@pw.live',
+  'Vipin': 'vipin.kumar_kp@pw.live',
+  'Azhar': 'azhar.nabi@pwgulf.com',
+  'Rajni': 'rajni.mamgai@pw.live',
+  'Aditya': 'aditya.kumar3@pw.live',
+  'Ritika': 'ritika.sinha@pw.live',
+  // Cluster Heads from Frontend Dropdowns mapped exactly
+  'Vaibhav Jain': 'vaibhav.jain1@pw.live',
+  'Md.Irfanul Haque': 'md.irfanulhaque@pw.live',
+  'Saqib Nazir': 'saquib.mohammed_kp@pw.live',
+  'Atul kumar Jha': 'atul.jha_kp@pw.live',
+  'Purbayan Paul': 'purbayan.paul_kp@pw.live',
+  'Fahad Jamal': 'fahad_jamal_kp@pw.live'
+};
+
 let cachedInitData: any = null;
 let lastFetchTime = 0;
 const CACHE_DURATION_MS = 5 * 60 * 1000;
@@ -188,7 +211,7 @@ app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
-// Submit Leave
+// Submit Leave Request (WITH DYNAMIC ROUTING)
 app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -205,6 +228,38 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
     });
 
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      
+      // 1. Build Base Recipients List
+      let recipients = [
+        emailDirectory['Shrey'], 
+        emailDirectory['Sumeet'], 
+        emailDirectory['Sohel'], 
+        emailDirectory['Ahsan'], 
+        emailDirectory['Tannu']
+      ];
+
+      // 2. Add Cohort-Specific Recipients
+      const cohortStr = data.cohort || '';
+      
+      if (cohortStr.includes('UAE')) {
+        recipients.push(emailDirectory['Ahad']);
+        if (data.clusterHead && emailDirectory[data.clusterHead]) {
+          recipients.push(emailDirectory[data.clusterHead]);
+        }
+      } 
+      else if (cohortStr.includes('Oman')) {
+        recipients.push(emailDirectory['Azhar'], emailDirectory['Atir'], emailDirectory['Vipin']);
+      } 
+      else if (cohortStr.includes('Saudi')) {
+        recipients.push(emailDirectory['Ahad'], emailDirectory['Atir']);
+      } 
+      else if (cohortStr.includes('Online')) {
+        recipients.push(emailDirectory['Rajni'], emailDirectory['Aditya'], emailDirectory['Ritika']);
+      }
+
+      // Filter out any undefined emails and remove duplicates
+      recipients = [...new Set(recipients.filter(Boolean))];
+
       const emailHtml = `
       <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
         <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -246,8 +301,9 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       `;
 
       await transporter.sendMail({
-        from: `"PW Gulf System" <${process.env.EMAIL_USER}>`,
-        to: 'rohit.kumar30@pw.live', 
+        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
+        replyTo: emailDirectory['Tannu'], // Directs all "Replies" straight to Tannu
+        to: recipients.join(', '), 
         subject: `[LEAVE REQUEST] ${data.teacher} - ${data.days} Day(s)`,
         html: emailHtml
       });
@@ -257,7 +313,7 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: "Google API Error: " + e.message }); }
 });
 
-// HR Dashboard AJAX Update Route (WITH DATES ADDED)
+// HR Dashboard AJAX Update Route (Teacher Confirmation)
 app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Response) => {
   try {
     const { id, action } = req.body;
@@ -268,7 +324,7 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
     const rowIndex = rows.findIndex(row => row[0] === id);
     if (rowIndex === -1) return res.status(404).json({ message: 'Leave request not found.' });
 
-    // Extracting all necessary data for the Email
+    // Extract data to build the final email
     const teacherName = rows[rowIndex][4];
     const fromDate = rows[rowIndex][5];
     const toDate = rows[rowIndex][6];
@@ -305,8 +361,9 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       `;
 
       await transporter.sendMail({
-        from: `"PW Gulf HR" <${process.env.EMAIL_USER}>`,
-        to: 'thisisrohithere@gmail.com', 
+        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
+        replyTo: emailDirectory['Tannu'],
+        to: 'thisisrohithere@gmail.com', // Continues sending to testing email as requested
         subject: `Leave Request ${action}d [${fromDate}]`,
         html: emailHtml
       });
