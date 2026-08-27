@@ -70,7 +70,7 @@ app.get(['/api/init', '/init', '/api/index'], async (req: Request, res: Response
     }
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
     const [teacherRes, dataRes] = await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:B' }),
+      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' }), // Expanded range to include emails
       sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Imported Data!A2:BG' }) 
     ]);
 
@@ -211,7 +211,7 @@ app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
-// Submit Leave Request (WITH DYNAMIC ROUTING)
+// Submit Leave Request
 app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -330,6 +330,17 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
     const toDate = rows[rowIndex][6];
     const days = rows[rowIndex][7];
     
+    // --- NEW: Fetch Teacher's Real Email from Teacher List ---
+    const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
+    const teacherListRows = teacherSheetData.data.values || [];
+    
+    // Find row where Name (Column B / index 1) exactly matches the Teacher's name
+    const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
+    
+    // Extract Email (Column D / index 3). Fallback to test email if row/email is blank to prevent crashes
+    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'thisisrohithere@gmail.com';
+    // ---------------------------------------------------------
+
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `Leave Requests!K${rowIndex + 1}`,
@@ -363,7 +374,7 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       await transporter.sendMail({
         from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
         replyTo: emailDirectory['Tannu'],
-        to: 'thisisrohithere@gmail.com', // Continues sending to testing email as requested
+        to: teacherEmail, // <--- NOW SENDS DIRECTLY TO THE TEACHER'S SHEET EMAIL
         subject: `Leave Request ${action}d [${fromDate}]`,
         html: emailHtml
       });
@@ -371,6 +382,74 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
 
     res.json({ success: true, message: `Leave ${action}d successfully.` });
   } catch (e: any) { res.status(500).json({ message: "Error updating leave." }); }
+});
+
+// Old GET route to support clicking buttons inside old emails
+app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Response) => {
+  try {
+    const { id, action } = req.query;
+    if (!id || !action) return res.send('Invalid Request');
+
+    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
+    const sheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K' });
+    const rows = sheetData.data.values || [];
+    
+    const rowIndex = rows.findIndex(row => row[0] === id);
+    if (rowIndex === -1) return res.send('Leave request not found.');
+
+    const teacherName = rows[rowIndex][4];
+    const fromDate = rows[rowIndex][5];
+    const toDate = rows[rowIndex][6];
+    const days = rows[rowIndex][7];
+    
+    // --- NEW: Fetch Teacher's Real Email from Teacher List ---
+    const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
+    const teacherListRows = teacherSheetData.data.values || [];
+    const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
+    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'thisisrohithere@gmail.com';
+    // ---------------------------------------------------------
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID, range: `Leave Requests!K${rowIndex + 1}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[action]] }
+    });
+
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const isApproved = action === 'Approve';
+      const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
+      const colorText = isApproved ? '#065f46' : '#991b1b';
+
+      const emailHtml = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
+        <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 0.5px;">PW Gulf HR</h2>
+        </div>
+        <div style="background-color: #ffffff; padding: 40px 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); text-align: center;">
+          <p style="color: #64748b; font-size: 16px; margin: 0 0 8px 0;">Hello <strong style="color: #0f172a;">${teacherName}</strong>,</p>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 24px 0; line-height: 1.5;">Your leave request for <strong>${fromDate}</strong> to <strong>${toDate}</strong> (${days} Days) has been processed.</p>
+          <span style="display: inline-block; padding: 12px 32px; background-color: ${colorBg}; color: ${colorText}; border-radius: 999px; font-size: 18px; font-weight: bold; letter-spacing: 0.5px; margin: 12px 0;">
+            ${action}d
+          </span>
+          <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">If you have any questions, please contact your Cluster Head or HR.</p>
+        </div>
+      </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
+        replyTo: emailDirectory['Tannu'],
+        to: teacherEmail, // <--- NOW SENDS DIRECTLY TO THE TEACHER'S SHEET EMAIL
+        subject: `Leave Request ${action}d [${fromDate}]`,
+        html: emailHtml
+      });
+    }
+
+    res.send(`
+      <div style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+        <h1 style="color: #0f172a;">Successfully ${action}d leave for ${teacherName}.</h1>
+        <p style="color: #64748b;">The Google Sheet has been updated. You may close this window.</p>
+      </div>
+    `);
+  } catch (e: any) { res.status(500).send("Error updating leave."); }
 });
 
 export default app;
