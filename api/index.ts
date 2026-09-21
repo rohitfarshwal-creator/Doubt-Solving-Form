@@ -3,7 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { PassThrough } from 'stream';
-import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 
 dotenv.config();
@@ -27,11 +26,7 @@ const getAuth = () => {
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = '1W5DOjAp3tI2aMBzKpSZ_n5C5g9xs9NE4'; 
 const APP_URL = 'https://doubt-solving-form.vercel.app'; 
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-});
+const WEBHOOK_URL = process.env.GOOGLE_SCRIPT_WEBHOOK_URL || '';
 
 // --- MASTER EMAIL DIRECTORY ---
 const emailDirectory: Record<string, string> = {
@@ -169,10 +164,9 @@ app.post(['/api/dpp', '/dpp'], async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// NEW LEAVE MANAGEMENT SYSTEM
+// LEAVE MANAGEMENT SYSTEM (WITH NATIVE WEBHOOK)
 // ==========================================
 
-// Login Route
 app.post(['/api/login', '/login'], async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
@@ -181,7 +175,6 @@ app.post(['/api/login', '/login'], async (req: Request, res: Response) => {
     const rows = sheetData.data.values || [];
     
     const user = rows.find(r => r[0]?.toString().trim().toLowerCase() === username.toLowerCase() && r[1] === password);
-    
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const actualName = user[0].toString().trim();
@@ -193,7 +186,6 @@ app.post(['/api/login', '/login'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
-// Fetch Leaves
 app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -209,7 +201,6 @@ app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
-// Submit Leave Request
 app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -225,32 +216,26 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K', valueInputOption: 'USER_ENTERED', requestBody: { values: [newRow] }
     });
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      
+    if (WEBHOOK_URL) {
       let recipients = [
         emailDirectory['Shrey'], emailDirectory['Sumeet'], emailDirectory['Sohel'], 
         emailDirectory['Ahsan'], emailDirectory['Tannu']
       ];
 
       const cohortStr = data.cohort || '';
-      
       if (cohortStr.includes('UAE')) {
         recipients.push(emailDirectory['Ahad']);
         if (data.clusterHead && emailDirectory[data.clusterHead]) recipients.push(emailDirectory[data.clusterHead]);
-      } 
-      else if (cohortStr.includes('Oman')) {
+      } else if (cohortStr.includes('Oman')) {
         recipients.push(emailDirectory['Azhar'], emailDirectory['Atir'], emailDirectory['Vipin']);
-      } 
-      else if (cohortStr.includes('Saudi')) {
+      } else if (cohortStr.includes('Saudi')) {
         recipients.push(emailDirectory['Ahad'], emailDirectory['Atir']);
-      } 
-      else if (cohortStr.includes('Online')) {
+      } else if (cohortStr.includes('Online')) {
         recipients.push(emailDirectory['Rajni'], emailDirectory['Aditya'], emailDirectory['Ritika']);
       }
 
       recipients = [...new Set(recipients.filter(Boolean))];
 
-      // Anti-Spam: Clean Plain Text Fallback
       const emailText = `New Leave Request Pending\n\nFaculty: ${data.teacher} (${data.cohort})\nCluster Head: ${data.clusterHead || 'N/A'}\nDates: ${data.fromDate} to ${data.toDate} (${data.days} Days)\nReason: ${data.reason}\nComments: ${data.comments}\n\nPlease log in to the Central Dashboard to process this request: ${APP_URL}`;
 
       const emailHtml = `
@@ -293,13 +278,17 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       </div>
       `;
 
-      await transporter.sendMail({
-        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
-        replyTo: emailDirectory['Tannu'],
-        to: recipients.join(', '), 
-        subject: `Leave Request Pending: ${data.teacher} - ${data.days} Day(s)`,
-        text: emailText,
-        html: emailHtml
+      // Ping Google Apps Script Webhook
+      await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: recipients.join(', '),
+          replyTo: emailDirectory['Tannu'],
+          subject: `Leave Request Pending: ${data.teacher} - ${data.days} Day(s)`,
+          textBody: emailText,
+          htmlBody: emailHtml
+        })
       });
     }
 
@@ -307,7 +296,6 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: "Google API Error: " + e.message }); }
 });
 
-// HR Dashboard AJAX Update Route (Teacher Confirmation)
 app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Response) => {
   try {
     const { id, action } = req.body;
@@ -327,8 +315,7 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
     const teacherListRows = teacherSheetData.data.values || [];
     const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
     
-    // Safety Fallback: Uses your personal email if the teacher's email is missing from the Google Sheet
-    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.farshwal@gmail.com';
+    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.kumar30@pw.live';
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
@@ -337,12 +324,11 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       requestBody: { values: [[action]] }
     });
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (WEBHOOK_URL) {
       const isApproved = action === 'Approve';
       const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
       const colorText = isApproved ? '#065f46' : '#991b1b';
       
-      // Anti-Spam: Clean Plain Text Fallback
       const emailText = `Hello ${teacherName},\n\nYour leave request for ${fromDate} to ${toDate} (${days} Days) has been ${action}d.\n\nIf you have any questions, please contact your Cluster Head or HR.`;
 
       const emailHtml = `
@@ -363,87 +349,22 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       </div>
       `;
 
-      await transporter.sendMail({
-        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
-        replyTo: emailDirectory['Tannu'],
-        to: teacherEmail,
-        subject: `Leave Request ${action}d: ${fromDate}`,
-        text: emailText,
-        html: emailHtml
+      // Ping Google Apps Script Webhook
+      await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: teacherEmail,
+          replyTo: emailDirectory['Tannu'],
+          subject: `Leave Request ${action}d: ${fromDate}`,
+          textBody: emailText,
+          htmlBody: emailHtml
+        })
       });
     }
 
     res.json({ success: true, message: `Leave ${action}d successfully.` });
   } catch (e: any) { res.status(500).json({ message: "Error updating leave." }); }
-});
-
-// Old GET route to support clicking buttons inside old emails
-app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Response) => {
-  try {
-    const { id, action } = req.query;
-    if (!id || !action) return res.send('Invalid Request');
-
-    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
-    const sheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Leave Requests!A:K' });
-    const rows = sheetData.data.values || [];
-    
-    const rowIndex = rows.findIndex(row => row[0] === id);
-    if (rowIndex === -1) return res.send('Leave request not found.');
-
-    const teacherName = rows[rowIndex][4];
-    const fromDate = rows[rowIndex][5];
-    const toDate = rows[rowIndex][6];
-    const days = rows[rowIndex][7];
-    
-    const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
-    const teacherListRows = teacherSheetData.data.values || [];
-    const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
-    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.farshwal@gmail.com';
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID, range: `Leave Requests!K${rowIndex + 1}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[action]] }
-    });
-
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      const isApproved = action === 'Approve';
-      const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
-      const colorText = isApproved ? '#065f46' : '#991b1b';
-
-      const emailText = `Hello ${teacherName},\n\nYour leave request for ${fromDate} to ${toDate} (${days} Days) has been ${action}d.\n\nIf you have any questions, please contact your Cluster Head or HR.`;
-
-      const emailHtml = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px; border-radius: 12px;">
-        <div style="background-color: #0f172a; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
-          <h2 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 0.5px;">PW Gulf HR</h2>
-        </div>
-        <div style="background-color: #ffffff; padding: 40px 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); text-align: center;">
-          <p style="color: #64748b; font-size: 16px; margin: 0 0 8px 0;">Hello <strong style="color: #0f172a;">${teacherName}</strong>,</p>
-          <p style="color: #334155; font-size: 16px; margin: 0 0 24px 0; line-height: 1.5;">Your leave request for <strong>${fromDate}</strong> to <strong>${toDate}</strong> (${days} Days) has been processed.</p>
-          <span style="display: inline-block; padding: 12px 32px; background-color: ${colorBg}; color: ${colorText}; border-radius: 999px; font-size: 18px; font-weight: bold; letter-spacing: 0.5px; margin: 12px 0;">
-            ${action}d
-          </span>
-          <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">If you have any questions, please contact your Cluster Head or HR.</p>
-        </div>
-      </div>
-      `;
-
-      await transporter.sendMail({
-        from: `"Gulf HR" <${process.env.EMAIL_USER}>`,
-        replyTo: emailDirectory['Tannu'],
-        to: teacherEmail,
-        subject: `Leave Request ${action}d: ${fromDate}`,
-        text: emailText,
-        html: emailHtml
-      });
-    }
-
-    res.send(`
-      <div style="font-family: sans-serif; text-align: center; margin-top: 50px;">
-        <h1 style="color: #0f172a;">Successfully ${action}d leave for ${teacherName}.</h1>
-        <p style="color: #64748b;">The Google Sheet has been updated. You may close this window.</p>
-      </div>
-    `);
-  } catch (e: any) { res.status(500).send("Error updating leave."); }
 });
 
 export default app;
