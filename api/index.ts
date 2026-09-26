@@ -164,7 +164,7 @@ app.post(['/api/dpp', '/dpp'], async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// NEW LEAVE MANAGEMENT SYSTEM (VIA GOOGLE WEBHOOK)
+// LEAVE MANAGEMENT SYSTEM (VIA GOOGLE WEBHOOK)
 // ==========================================
 
 app.post(['/api/login', '/login'], async (req: Request, res: Response) => {
@@ -202,6 +202,9 @@ app.get(['/api/leaves', '/leaves'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: e.message }); }
 });
 
+// ----------------------------------------------------
+// 1. SUBMIT LEAVE REQUEST (Initial Application)
+// ----------------------------------------------------
 app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth() });
@@ -218,33 +221,36 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
     });
 
     if (WEBHOOK_URL) {
-      
+      // Fetch the Teacher's email so they get the initial request notification too
+      const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
+      const teacherListRows = teacherSheetData.data.values || [];
+      const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === data.teacher.toString().trim().toLowerCase());
+      const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.farshwal@gmail.com';
+
+      // Build Recipients List (HR Team + Teacher)
       let recipients = [
         emailDirectory['Shrey'], emailDirectory['Sumeet'], emailDirectory['Sohel'], 
-        emailDirectory['Ahsan'], emailDirectory['Tannu']
+        emailDirectory['Ahsan'], emailDirectory['Tannu'], teacherEmail
       ];
 
+      // Add Regional Cohort Team
       const cohortStr = data.cohort || '';
-      
       if (cohortStr.includes('UAE')) {
         recipients.push(emailDirectory['Ahad']);
-      } 
-      else if (cohortStr.includes('Oman')) {
+      } else if (cohortStr.includes('Oman')) {
         recipients.push(emailDirectory['Azhar'], emailDirectory['Atir'], emailDirectory['Vipin']);
-      } 
-      else if (cohortStr.includes('Saudi')) {
+      } else if (cohortStr.includes('Saudi')) {
         recipients.push(emailDirectory['Ahad'], emailDirectory['Atir']);
-      } 
-      else if (cohortStr.includes('Online')) {
+      } else if (cohortStr.includes('Online')) {
         recipients.push(emailDirectory['Rajni'], emailDirectory['Aditya'], emailDirectory['Ritika']);
       }
 
-      // Route to Cluster Head if selected
+      // Add Cluster Head if Selected
       if (data.clusterHead && data.clusterHead !== 'N/A' && emailDirectory[data.clusterHead]) {
         recipients.push(emailDirectory[data.clusterHead]);
       }
 
-      recipients = [...new Set(recipients.filter(Boolean))];
+      recipients = [...new Set(recipients.filter(Boolean))]; // Remove duplicates & nulls
 
       const emailText = `New Leave Request Pending\n\nFaculty: ${data.teacher} (${data.cohort})\nCluster Head: ${data.clusterHead || 'N/A'}\nDates: ${data.fromDate} to ${data.toDate} (${data.days} Days)\nReason: ${data.reason}\nComments: ${data.comments}\n\nPlease log in to the Central Dashboard to process this request: ${APP_URL}`;
 
@@ -255,7 +261,7 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
           <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Leave Request Pending</p>
         </div>
         <div style="background-color: #ffffff; padding: 32px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-          <p style="color: #334155; font-size: 16px; margin-top: 0;">A new leave request requires your attention.</p>
+          <p style="color: #334155; font-size: 16px; margin-top: 0;">A new leave request requires attention.</p>
           
           <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
             <tr>
@@ -288,7 +294,6 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
       </div>
       `;
 
-      // Ping Google Apps Script Webhook
       await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -306,6 +311,9 @@ app.post(['/api/leave', '/leave'], async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ message: "Google API Error: " + e.message }); }
 });
 
+// ----------------------------------------------------
+// 2. UPDATE LEAVE REQUEST (AJAX Dashboard Action)
+// ----------------------------------------------------
 app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Response) => {
   try {
     const { id, action } = req.body;
@@ -316,21 +324,18 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
     const rowIndex = rows.findIndex(row => row[0] === id);
     if (rowIndex === -1) return res.status(404).json({ message: 'Leave request not found.' });
 
+    const cohortStr = rows[rowIndex][2] || '';
     const clusterHead = rows[rowIndex][3];
     const teacherName = rows[rowIndex][4];
     const fromDate = rows[rowIndex][5];
     const toDate = rows[rowIndex][6];
     const days = rows[rowIndex][7];
     
+    // Fetch Teacher's Email
     const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
     const teacherListRows = teacherSheetData.data.values || [];
     const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
-    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.kumar30@pw.live';
-
-    let toEmails = [teacherEmail];
-    if (clusterHead && clusterHead !== 'N/A' && emailDirectory[clusterHead]) {
-      toEmails.push(emailDirectory[clusterHead]);
-    }
+    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.farshwal@gmail.com';
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
@@ -340,6 +345,28 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
     });
 
     if (WEBHOOK_URL) {
+      // Build Recipients List (Same full list as the initial request)
+      let recipients = [
+        emailDirectory['Shrey'], emailDirectory['Sumeet'], emailDirectory['Sohel'], 
+        emailDirectory['Ahsan'], emailDirectory['Tannu'], teacherEmail
+      ];
+
+      if (cohortStr.includes('UAE')) {
+        recipients.push(emailDirectory['Ahad']);
+      } else if (cohortStr.includes('Oman')) {
+        recipients.push(emailDirectory['Azhar'], emailDirectory['Atir'], emailDirectory['Vipin']);
+      } else if (cohortStr.includes('Saudi')) {
+        recipients.push(emailDirectory['Ahad'], emailDirectory['Atir']);
+      } else if (cohortStr.includes('Online')) {
+        recipients.push(emailDirectory['Rajni'], emailDirectory['Aditya'], emailDirectory['Ritika']);
+      }
+
+      if (clusterHead && clusterHead !== 'N/A' && emailDirectory[clusterHead]) {
+        recipients.push(emailDirectory[clusterHead]);
+      }
+
+      recipients = [...new Set(recipients.filter(Boolean))];
+
       const isApproved = action === 'Approve';
       const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
       const colorText = isApproved ? '#065f46' : '#991b1b';
@@ -364,12 +391,11 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
       </div>
       `;
 
-      // Ping Google Apps Script Webhook
       await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: toEmails.join(', '),
+          to: recipients.join(', '),
           replyTo: emailDirectory['Tannu'],
           subject: `Leave Request ${action}d: ${fromDate}`,
           textBody: emailText,
@@ -382,6 +408,9 @@ app.post(['/api/leave/update', '/leave/update'], async (req: Request, res: Respo
   } catch (e: any) { res.status(500).json({ message: "Error updating leave." }); }
 });
 
+// ----------------------------------------------------
+// 3. UPDATE LEAVE REQUEST (Legacy URL Action)
+// ----------------------------------------------------
 app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Response) => {
   try {
     const { id, action } = req.query;
@@ -394,27 +423,46 @@ app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Respon
     const rowIndex = rows.findIndex(row => row[0] === id);
     if (rowIndex === -1) return res.send('Leave request not found.');
 
+    const cohortStr = rows[rowIndex][2] || '';
     const clusterHead = rows[rowIndex][3];
     const teacherName = rows[rowIndex][4];
     const fromDate = rows[rowIndex][5];
     const toDate = rows[rowIndex][6];
     const days = rows[rowIndex][7];
     
+    // Fetch Teacher's Email
     const teacherSheetData = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teacher List!A2:D' });
     const teacherListRows = teacherSheetData.data.values || [];
     const matchedTeacher = teacherListRows.find(r => r[1]?.toString().trim().toLowerCase() === teacherName.toString().trim().toLowerCase());
-    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.kumar30@pw.live';
-
-    let toEmails = [teacherEmail];
-    if (clusterHead && clusterHead !== 'N/A' && emailDirectory[clusterHead]) {
-      toEmails.push(emailDirectory[clusterHead]);
-    }
+    const teacherEmail = matchedTeacher && matchedTeacher[3] ? matchedTeacher[3].toString().trim() : 'rohit.farshwal@gmail.com';
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID, range: `Leave Requests!K${rowIndex + 1}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[action]] }
     });
 
     if (WEBHOOK_URL) {
+      // Build Recipients List (Same full list)
+      let recipients = [
+        emailDirectory['Shrey'], emailDirectory['Sumeet'], emailDirectory['Sohel'], 
+        emailDirectory['Ahsan'], emailDirectory['Tannu'], teacherEmail
+      ];
+
+      if (cohortStr.includes('UAE')) {
+        recipients.push(emailDirectory['Ahad']);
+      } else if (cohortStr.includes('Oman')) {
+        recipients.push(emailDirectory['Azhar'], emailDirectory['Atir'], emailDirectory['Vipin']);
+      } else if (cohortStr.includes('Saudi')) {
+        recipients.push(emailDirectory['Ahad'], emailDirectory['Atir']);
+      } else if (cohortStr.includes('Online')) {
+        recipients.push(emailDirectory['Rajni'], emailDirectory['Aditya'], emailDirectory['Ritika']);
+      }
+
+      if (clusterHead && clusterHead !== 'N/A' && emailDirectory[clusterHead]) {
+        recipients.push(emailDirectory[clusterHead]);
+      }
+
+      recipients = [...new Set(recipients.filter(Boolean))];
+
       const isApproved = action === 'Approve';
       const colorBg = isApproved ? '#d1fae5' : '#fee2e2';
       const colorText = isApproved ? '#065f46' : '#991b1b';
@@ -437,12 +485,11 @@ app.get(['/api/leave/action', '/leave/action'], async (req: Request, res: Respon
       </div>
       `;
 
-      // Ping Google Apps Script Webhook
       await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: toEmails.join(', '),
+          to: recipients.join(', '),
           replyTo: emailDirectory['Tannu'],
           subject: `Leave Request ${action}d: ${fromDate}`,
           textBody: emailText,
