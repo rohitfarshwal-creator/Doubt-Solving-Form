@@ -44,7 +44,7 @@ const emailDirectory: Record<string, string> = {
   'Ritika': 'ritika.sinha@pw.live',
   'Vaibhav Jain': 'vaibhav.jain1@pw.live',
   'Md.Irfanul Haque': 'md.irfanulhaque@pw.live',
-  'Saqib Nazir': 'saquib.mohammed_kp@pw.live',
+  'Saqib Nazir': 'saqib.nazir@pw.live',
   'Atul kumar Jha': 'atul.jha_kp@pw.live',
   'Purbayan Paul': 'purbayan.paul_kp@pw.live',
   'Fahad Jamal': 'fahad_jamal_kp@pw.live'
